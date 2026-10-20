@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <div id="app">
@@ -923,12 +923,27 @@ function clearTurnSlot(key){ turnSlotState[key]=null; renderTurnSlots(); }
 function resetTurnSlots(){ turnSlotState={bonus:null,action:null,move:null}; openSlotKey=null; }
 
 function findObj(id){return state.characters[id]||state.enemies[id]||state.npcs[id];}
+
+// ---------- CONTROLES RÁPIDOS DE HP (iguais no menu do token e no quadro de combate) ----------
+function hpQuickHtml(id,key){
+  return `<div class="tm-row">${[-10,-5,-1,1,5,10].map(n=>`<button class="btn small ${n<0?'':'ghost'}" onclick="qhDelta('${id}',${n})">${n>0?'+':''}${n}</button>`).join('')}</div>
+    <div class="tm-row"><input id="qh-${key}-${id}" type="number" min="1" placeholder="valor" onkeydown="if(event.key==='Enter')qhCustom('${id}','${key}',-1)"><button class="btn small" onclick="qhCustom('${id}','${key}',-1)">DANO</button><button class="btn small ghost" onclick="qhCustom('${id}','${key}',1)">CURA</button></div>`;
+}
+function qhDelta(id,n){ applyDelta(id,n); }
+function qhCustom(id,key,sign){
+  const el=document.getElementById(`qh-${key}-${id}`); const v=Math.abs(parseInt(el&&el.value,10));
+  if(!v) return;
+  applyDelta(id,sign*v);
+  const n=document.getElementById(`qh-${key}-${id}`); if(n) n.focus();
+}
+
 function applyDelta(id,delta){
   const c=findObj(id); if(!c) return;
   const hpBefore=c.hp;
   c.hp=Math.max(0,Math.min(c.maxHp,c.hp+delta));
   addLog(`${c.short} ${delta<0?'recebeu '+(-delta)+' de dano':'recuperou '+delta+' HP'}. HP: ${c.hp}/${c.maxHp}${c.hp===0?' — DOWNED':''}`,'hp',{target:c.short,tid:id,real:c.hp-hpBefore,down:c.hp===0&&hpBefore>0});
   renderParticipants(); renderEnemiesList(); renderTokens(); renderTurns();
+  if(role==='gm'){ boardRender(); if(tmId===id) renderTokenMenu(); }
   showFloatDmg(id,delta);
   if(gmActivePane==='chars') gmRenderChars();
   if(gmActivePane==='enemies') gmRenderEnemies();
@@ -948,6 +963,15 @@ function showFloatDmg(id,delta){
   tok.classList.remove('hit','healed','ko'); void tok.offsetWidth; tok.classList.add(cls);
   clearTimeout(tok._fx); tok._fx=setTimeout(()=>tok.classList.remove(cls),900);
   if(delta<0 && role==='player' && id===state.currentPlayer) flashHit(pct);
+  // o cartão no quadro de combate reage igual ao token
+  const card=document.querySelector(`.bd-card[data-id="${id}"]`);
+  if(card){
+    let p=card.querySelector('.bd-pop'); if(!p){ p=document.createElement('div'); card.appendChild(p); }
+    p.textContent=(delta<0?'−'+(-delta):'+'+delta);
+    p.className='bd-pop show'+(delta>0?' heal':'')+(pct>=.5?' crit':pct>=.25?' big':'');
+    card.classList.remove('hit','healed'); void card.offsetWidth; card.classList.add(delta>0?'healed':'hit');
+    clearTimeout(card._fx); card._fx=setTimeout(()=>{ card.classList.remove('hit','healed'); if(p) p.classList.remove('show'); },1200);
+  }
 }
 function flashHit(pct){
   let f=document.getElementById('hit-flash');
@@ -970,21 +994,13 @@ function renderTokenMenu(tok){
   const hasHp=typeof c.maxHp==='number';
   const m=document.createElement('div'); m.id='token-menu';
   m.innerHTML=`<div class="tm-head"><b>${escHtml(c.short||c.name)}</b>${hasHp?`<span>${c.hp}/${c.maxHp} HP</span>`:''}<i class="tm-x" onclick="closeTokenMenu()">✕</i></div>`
-    +(hasHp?`<div class="tm-row">${[-10,-5,-1,1,5,10].map(n=>`<button class="btn small ${n<0?'':'ghost'}" onclick="tmDelta(${n})">${n>0?'+':''}${n}</button>`).join('')}</div>
-      <div class="tm-row"><input id="tm-amt" type="number" min="1" placeholder="valor" onkeydown="if(event.key==='Enter')tmCustom(-1)"><button class="btn small" onclick="tmCustom(-1)">DANO</button><button class="btn small ghost" onclick="tmCustom(1)">CURA</button></div>`:'')
+    +(hasHp?hpQuickHtml(tmId,'tm'):'')
     +`<div class="tm-row"><button class="btn small ghost" onclick="openSheet('${tmId}');closeTokenMenu()">FICHA</button>${state.turnOrder.includes(tmId)?`<button class="btn small ghost" onclick="tmFocusTurn()">DAR O TURNO</button>`:''}</div>`;
   document.body.appendChild(m);
   const r=tok.getBoundingClientRect(), w=m.offsetWidth, h=m.offsetHeight;
   m.style.left=Math.max(6,Math.min(innerWidth-w-6,r.left+r.width/2-w/2))+'px';
   let top=r.bottom+8; if(top+h>innerHeight-6) top=Math.max(6,r.top-h-8);
   m.style.top=top+'px';
-}
-function tmDelta(n){ if(!tmId) return; applyDelta(tmId,n); renderTokenMenu(); }
-function tmCustom(sign){
-  const el=document.getElementById('tm-amt'); const v=Math.abs(parseInt(el&&el.value,10));
-  if(!v||!tmId) return;
-  applyDelta(tmId,sign*v); renderTokenMenu();
-  const n=document.getElementById('tm-amt'); if(n) n.focus();
 }
 function tmFocusTurn(){
   const i=state.turnOrder.indexOf(tmId); if(i<0) return;
@@ -1165,9 +1181,10 @@ function bdStatus(id,c){
   const en=!!state.enemies[id]; if(c.maxSp==null) c.maxSp=c.sp||0;
   const n=(k,v,w)=>`<input class="mini-input" type="number" value="${v}" style="width:${w||54}px" onchange="bdSet('${id}','${k}',this.value)">`;
   const t=(k,l)=>`<div class="bd-row">${l} <input class="mini-input" style="flex:1" value="${escHtml(c[k]||'')}" onchange="bdSet('${id}','${k}',this.value)"></div>`;
-  return `<div class="bd-card ${en?'en':''}"><div class="bd-h"><b>${escHtml(c.short)}</b><span>${escHtml(en?(c.type||'INIMIGO'):(c.arcana||''))}</span>${en?`<button class="btn small ghost" onclick="gmDeleteEnemy('${id}')">✕</button>`:''}</div>
+  return `<div class="bd-card ${en?'en':''}${c.hp<=0?' down':''}" data-id="${id}"><div class="bd-h"><b>${escHtml(c.short)}</b><span>${escHtml(en?(c.type||'INIMIGO'):(c.arcana||''))}</span>${en?`<button class="btn small ghost" onclick="gmDeleteEnemy('${id}')">✕</button>`:''}</div>
     <div class="bar hp"><i style="width:${100*c.hp/c.maxHp}%"></i></div>
-    <div class="bd-row">HP ${n('hp',c.hp)} / ${n('maxHp',c.maxHp)} ${[-5,-1,1,5].map(d=>`<button class="btn small ghost" onclick="applyDelta('${id}',${d})">${d>0?'+':''}${d}</button>`).join('')}</div>
+    <div class="bd-row">HP ${n('hp',c.hp)} / ${n('maxHp',c.maxHp)}</div>
+    ${hpQuickHtml(id,'bd')}
     <div class="bar sp"><i style="width:${c.maxSp?100*c.sp/c.maxSp:0}%"></i></div>
     <div class="bd-row">SP ${n('sp',c.sp)} / ${n('maxSp',c.maxSp)}</div>
     ${en?`<div class="bd-row">NÍVEL ${n('level',c.level||1)} <button class="btn small ghost" onclick="gmToggleWeakness('${id}')">${c.weaknessRevealed?'ESCONDER FRAQUEZA':'REVELAR FRAQUEZA'}</button></div>${t('weakness','FRAQUEZA')}${t('resistance','RESISTÊNCIA')}`
@@ -1177,6 +1194,7 @@ function bdStatus(id,c){
 }
 function bdSet(id,f,v){
   const c=findObj(id); if(!c) return;
+  if(f==='hp'){ const n=parseInt(v,10), alvo=Math.max(0,Math.min(c.maxHp,isNaN(n)?0:n)); if(alvo!==c.hp) applyDelta(id,alvo-c.hp); else boardRender(); return; }
   const txt=f==='weakness'||f==='resistance';
   let o=c,k=f; if(f.startsWith('stats.')){ o=c.stats; k=f.slice(6); }
   if(txt) o[k]=v; else { const n=parseInt(v,10); o[k]=Math.max(k==='maxHp'?1:0,isNaN(n)?0:n); }
@@ -2787,8 +2805,8 @@ function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.dr
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=6"></script>
-<script src="online.js?v=6"></script>
+<script src="firebase-config.js?v=7"></script>
+<script src="online.js?v=7"></script>
 </body>
 </html>
 

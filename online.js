@@ -290,7 +290,7 @@
     passo('chars', () => {
       if(em('#participants-list,#enemies-list,#npcs-list,#turn-col')) return 'adiar';
       let primeiro = null;
-      [renderTokens, renderParticipants, renderEnemiesList, renderNpcsList, renderTurns, msgComposerUpdate].forEach(f => {
+      [renderTokens, renderParticipants, renderEnemiesList, renderNpcsList, renderTurns, msgComposerUpdate, () => { if(typeof boardRefresh === 'function') boardRefresh(); }].forEach(f => {
         try{ f(); }catch(e){ if(!primeiro) primeiro = e; console.log('online.js: erro em', f.name, e); }
       });
       // a visão dos players (fog) segue os tokens: refaz quando qualquer personagem mudou de lugar
