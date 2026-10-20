@@ -7,50 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4">
-<style id="d0-improvements">
-/* Melhorias de navegação, mobile e ações rápidas */
-.map-toolbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.map-menu{position:relative;display:inline-flex;align-items:center}
-.map-menu>summary{list-style:none;cursor:pointer;user-select:none;padding:6px 9px;border:1px solid var(--line);background:var(--panel2);color:var(--white);font:inherit;font-size:.68rem}
-.map-menu>summary::-webkit-details-marker{display:none}
-.map-menu[open]{z-index:80}
-.map-menu .menu-pop{position:absolute;top:calc(100% + 4px);left:0;min-width:190px;max-width:min(82vw,300px);padding:7px;background:var(--panel,#111);border:1px solid var(--line);box-shadow:0 10px 28px #000b;display:flex;flex-direction:column;gap:5px;z-index:999}
-.map-menu .menu-pop button{width:100%;text-align:left;white-space:normal}
-.token-action-menu{position:fixed;z-index:10050;background:#101014;border:1px solid #8d1b25;box-shadow:0 12px 32px #000c;padding:8px;min-width:165px;display:grid;gap:5px;color:#fff;font:12px 'JetBrains Mono',monospace}
-.token-action-menu strong{color:#ef5360;padding:3px 4px}
-.token-action-menu button{background:#1a1a20;color:#eee;border:1px solid #45454e;padding:8px;text-align:left;cursor:pointer}
-.token-action-menu button:hover{border-color:#e23b49}
-#mobile-sheet-handle{display:none}
-@media(max-width:760px){
- #screen-session{height:100dvh;overflow:hidden}
- .topbar{padding:6px;gap:6px;flex-wrap:wrap}
- .brand-logo{max-width:120px;max-height:42px;object-fit:contain}
- .timer-wrap{gap:5px;flex-wrap:wrap}
- .timer-wrap .role-toggle{display:none}
- .timer-wrap #timer-reset,.timer-wrap #btn-gm-control,.timer-wrap #btn-board{display:none!important}
- .main-grid{display:block!important;height:calc(100dvh - 76px);min-height:0}
- .map-col{height:100%;min-height:0;display:flex;flex-direction:column}
- .map-toolbar{flex:0 0 auto;max-height:90px;overflow:auto;align-content:flex-start;padding:5px;gap:4px}
- .map-toolbar>.btn{padding:5px 7px;font-size:10px}
- .map-viewport{flex:1;min-height:0;height:auto!important;touch-action:pan-x pan-y}
- .sidebar{position:fixed!important;z-index:1000;left:0;right:0;bottom:0;top:auto!important;width:100%!important;max-height:68dvh;overflow:auto;transform:translateY(calc(100% - 42px));transition:transform .22s ease;border-radius:16px 16px 0 0;padding:14px 12px calc(18px + env(safe-area-inset-bottom))!important;background:var(--panel,#101014);box-shadow:0 -8px 30px #0009}
- .sidebar:before{content:'FICHAS E ALIADOS — toque para abrir';display:block;text-align:center;color:var(--gray);font-size:11px;padding:0 0 12px;cursor:pointer}
- .sidebar.open{transform:translateY(0)}
- .sidebar .panel-block{margin-bottom:10px}
- .sidebar .panel-block h3{font-size:12px}
- .footer-bar{position:fixed!important;left:0;right:0;bottom:0;z-index:900;max-height:38dvh;overflow:auto;pointer-events:none}
- .footer-bar>*{pointer-events:auto}
- .turn-col{max-height:35dvh;overflow:auto}
- .log-col:not(.expanded){max-height:40px;overflow:hidden}
- .sheet-card{width:100vw!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important;overflow:auto}
- .sheet-dossier{display:block!important}
- .dossier-left{display:none!important}
- .dossier-right{min-width:0}
- .ov-head{position:sticky;top:0;z-index:2;background:var(--panel,#101014)}
- #btn-mobile-side{display:inline-flex!important}
-}
-</style>
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <div id="app">
@@ -204,11 +161,9 @@
           <button class="btn small ghost" id="btn-freveal" onclick="fogSetTool('reveal')" title="clique no mapa pra revelar uma área">REVELAR</button>
           <button class="btn small ghost" id="btn-fhide" onclick="fogSetTool('hide')" title="clique numa área revelada pra escondê-la de novo">ESCONDER</button>
           <span style="flex:1"></span>
-          <button class="btn small ghost" id="btn-report" onclick="gmGenerateReport()" title="relatório da partida com histórico de combate">📄 RELATÓRIO</button>
-          <button class="btn small ghost" id="btn-rooms" onclick="toggleRoomEdit()">EDITAR SALAS</button>
+          <details id="gm-tools" class="tools-menu" style="display:none"><summary class="btn small ghost">⚙ MESTRE ▾</summary><div class="tools-pop"><button class="btn small ghost" id="btn-music" onclick="openMusic()">♪ MÚSICA</button><button class="btn small ghost" id="btn-rooms" onclick="toggleRoomEdit()">EDITAR SALAS</button><button class="btn small ghost" id="btn-report" onclick="gmGenerateReport()" title="relatório da partida com histórico de combate">📄 RELATÓRIO</button></div></details>
           <span class="music-mini hidden" id="music-mini">♪ <b id="music-mini-name"></b> <button class="btn small ghost" onclick="musicToggle()" id="music-mini-btn">⏸</button><button class="btn small ghost" onclick="musicStop()">⏹</button></span>
           <span class="music-vol hidden" id="music-vol-player" title="Volume só no seu computador">♪ VOL <input type="range" min="0" max="100" value="100" oninput="musicSetLocalVolume(this.value)"></span>
-          <button class="btn small ghost" id="btn-music" onclick="openMusic()">♪ MÚSICA</button>
           <button class="btn small ghost" onclick="document.querySelector('.main-grid').classList.toggle('side-hidden')">PAINEL LATERAL</button>
           <button class="btn small" onclick="openOverlay('notes')">NOTAS</button>
         </div>
@@ -268,8 +223,8 @@
         </h3>
         <div id="turn-list"></div>
         <div class="turn-btns" id="turn-btns">
-          <button class="btn small ghost" onclick="prevTurn()">◀ PREV</button>
-          <button class="btn small" onclick="nextTurn()">NEXT ▶</button>
+          <button class="btn small ghost" onclick="prevTurn()" title="tecla P">◀ PREV</button>
+          <button class="btn small" onclick="nextTurn()" title="tecla N">NEXT ▶</button>
         </div>
         <div id="turn-slots" class="turn-slots"></div>
       </div>
@@ -470,12 +425,17 @@ function autoLogin(){
   if(!role){ try{ sessionStorage.removeItem('d0login'); }catch(e){} document.getElementById('login-msg').textContent=''; }
 }
 window.addEventListener('load',()=>{ if(!window.ONLINE_ON) autoLogin(); });
+document.addEventListener('click',e=>{
+  const d=document.getElementById('gm-tools'); if(!d||!d.open) return;
+  if(!d.contains(e.target) || e.target.closest('.tools-pop button')) d.open=false;
+});
 function updateUserBadge(){
   const el=document.getElementById('user-badge-text');
   if(role==='gm'){ el.textContent='OLÁ LELIS!'; }
   else { const c=state.characters[state.currentPlayer]; const pn=((c&&c.playerName)||currentLoginId||'PLAYER').toUpperCase(); el.textContent=c?('OLÁ '+pn+' • '+c.short):'PLAYER'; }
   document.getElementById('btn-gm-control').style.display= role==='gm'?'inline-block':'none'; document.getElementById('btn-board').style.display= role==='gm'?'inline-block':'none';
   ['btn-rooms','btn-report','btn-music','btn-fog','btn-freveal','btn-fhide'].forEach(id=>{const b=document.getElementById(id); if(b) b.style.display= role==='gm'?'inline-block':'none';});
+  const gt=document.getElementById('gm-tools'); if(gt) gt.style.display= role==='gm'?'inline-block':'none';
   const tb=document.getElementById('turn-btns'); if(tb) tb.style.display= role==='gm'?'':'none';
   const mv=document.getElementById('music-vol-player'); if(mv) mv.classList.toggle('hidden',role!=='player');
   music.audio.volume=musicEffVol();
@@ -536,7 +496,7 @@ function renderAll(){
   document.getElementById('chap-label').textContent=state.chapter+' · '+state.location;
 }
 
-const openFolders=new Set();
+const openFolders=new Set(), autoOpened=new Set();
 function makeFolder({key,kind,avatar,initial,name,hpPct,acting,bodyHtml,onOpen}){
   const el=document.createElement('div');
   el.className='folder '+kind+(openFolders.has(key)?' open':'');
@@ -561,9 +521,11 @@ function renderParticipants(){
   const box=document.getElementById('participants-list'); box.innerHTML='';
   Object.entries(state.characters).forEach(([id,c])=>{
     const acting=id===state.turnOrder[state.turn];
+    const mine=id===state.currentPlayer, lite=role==='player'&&!mine;
+    if(role==='player'&&mine&&!autoOpened.has(id)){ autoOpened.add(id); openFolders.add(id); }
     box.appendChild(makeFolder({key:id,kind:'pc',avatar:c.avatar,initial:(c.short||'?')[0],name:c.short,
       hpPct:100*c.hp/c.maxHp,acting,onOpen:()=>openSheet(id),
-      bodyHtml:`<div class="arcana">${c.arcana}</div>
+      bodyHtml:lite?`<div class="bar hp"><i style="width:${100*c.hp/c.maxHp}%"></i></div><div class="stat-line"><span>HP ${c.hp}/${c.maxHp}</span></div>`:`<div class="arcana">${c.arcana}</div>
         <div class="bar hp"><i style="width:${100*c.hp/c.maxHp}%"></i></div>
         <div class="stat-line"><span>HP ${c.hp}/${c.maxHp}</span><span>SP ${c.sp}/${c.maxSp}</span></div>
         <div class="bar sp"><i style="width:${100*c.sp/c.maxSp}%"></i></div>
@@ -607,11 +569,12 @@ function renderTokens(){
     if(!t){
       t=document.createElement('div');
       t.dataset.id=c.id; t.dataset.kind=c.kind;
-      t.onclick=()=>{ if(!t.dragging) openSheet(t.dataset.id); };
+      t.onclick=()=>{ if(!t.dragging) openTokenMenu(t); };
       t.addEventListener('pointerdown',startDrag);
       wrap.appendChild(t);
     }
-    t.className='token'+(c.kind==='enemy'?' enemy':'')+(c.kind==='npc'?' npc':'')+(hasHp&&c.hp<=0?' downed':'')+(t===dragTok?' dragging-now':'');
+    const fx=['hit','healed','ko'].filter(k=>t.classList.contains(k)).map(k=>' '+k).join('');
+    t.className='token'+fx+(c.kind==='enemy'?' enemy':'')+(c.kind==='npc'?' npc':'')+(hasHp&&c.hp<=0?' downed':'')+(t===dragTok?' dragging-now':'');
     // só mexe no conteúdo (e recarrega a imagem) se algo visível mudou
     const sig=[c.avatar||'',c.short||'',hasHp?c.hp+'/'+c.maxHp:'-'].join('|');
     if(t._sig!==sig){
@@ -964,18 +927,81 @@ function applyDelta(id,delta){
   const c=findObj(id); if(!c) return;
   const hpBefore=c.hp;
   c.hp=Math.max(0,Math.min(c.maxHp,c.hp+delta));
-  addLog(`${c.short} ${delta<0?'recebeu '+(-delta)+' de dano':'recuperou '+delta+' HP'}. HP: ${c.hp}/${c.maxHp}${c.hp===0?' — DOWNED':''}`,'hp',{target:c.short,real:c.hp-hpBefore,down:c.hp===0&&hpBefore>0});
-  showFloatDmg(id,delta);
+  addLog(`${c.short} ${delta<0?'recebeu '+(-delta)+' de dano':'recuperou '+delta+' HP'}. HP: ${c.hp}/${c.maxHp}${c.hp===0?' — DOWNED':''}`,'hp',{target:c.short,tid:id,real:c.hp-hpBefore,down:c.hp===0&&hpBefore>0});
   renderParticipants(); renderEnemiesList(); renderTokens(); renderTurns();
+  showFloatDmg(id,delta);
   if(gmActivePane==='chars') gmRenderChars();
   if(gmActivePane==='enemies') gmRenderEnemies();
 }
 function showFloatDmg(id,delta){
-  const tok=document.querySelector(`.token[data-id="${id}"]`); if(!tok) return;
-  const d=tok.querySelector('[data-dmg]'); d.textContent=(delta<0?delta:'+'+delta);
-  d.className='dmg show'+(delta>0?' heal':''); void d.offsetWidth;
-  setTimeout(()=>d.classList.remove('show'),900);
+  const tok=document.querySelector(`.token[data-id="${id}"]`); if(!tok||!delta) return;
+  const c=findObj(id), max=(c&&c.maxHp)||0, pct=max?Math.abs(delta)/max:0;
+  const d=tok.querySelector('[data-dmg]');
+  if(d){
+    d.textContent=(delta<0?'−'+(-delta):'+'+delta);
+    d.className='dmg show'+(delta>0?' heal':'')+(pct>=.5?' crit':pct>=.25?' big':'');
+    void d.offsetWidth;
+    clearTimeout(d._t); d._t=setTimeout(()=>d.classList.remove('show'),1200);
+  }
+  // o token reage: treme e pisca vermelho (dano), brilha verde (cura) ou desaba (caiu a 0)
+  const cls= delta>0?'healed' : (c&&typeof c.hp==='number'&&c.hp<=0?'ko':'hit');
+  tok.classList.remove('hit','healed','ko'); void tok.offsetWidth; tok.classList.add(cls);
+  clearTimeout(tok._fx); tok._fx=setTimeout(()=>tok.classList.remove(cls),900);
+  if(delta<0 && role==='player' && id===state.currentPlayer) flashHit(pct);
 }
+function flashHit(pct){
+  let f=document.getElementById('hit-flash');
+  if(!f){ f=document.createElement('div'); f.id='hit-flash'; document.body.appendChild(f); }
+  f.className=''; void f.offsetWidth; f.className='on'+(pct>=.25?' strong':'');
+}
+
+// ---------- MENU RÁPIDO DO TOKEN (mestre) ----------
+let tmId=null;
+function openTokenMenu(t){
+  const id=t.dataset.id;
+  if(role!=='gm'){ openSheet(id); return; }
+  tmId=id; renderTokenMenu(t);
+}
+function closeTokenMenu(){ tmId=null; const m=document.getElementById('token-menu'); if(m) m.remove(); }
+function renderTokenMenu(tok){
+  const old=document.getElementById('token-menu'); if(old) old.remove();
+  const c=tmId&&findObj(tmId); if(!c){ tmId=null; return; }
+  tok=tok||document.querySelector(`.token[data-id="${tmId}"]`); if(!tok) return;
+  const hasHp=typeof c.maxHp==='number';
+  const m=document.createElement('div'); m.id='token-menu';
+  m.innerHTML=`<div class="tm-head"><b>${escHtml(c.short||c.name)}</b>${hasHp?`<span>${c.hp}/${c.maxHp} HP</span>`:''}<i class="tm-x" onclick="closeTokenMenu()">✕</i></div>`
+    +(hasHp?`<div class="tm-row">${[-10,-5,-1,1,5,10].map(n=>`<button class="btn small ${n<0?'':'ghost'}" onclick="tmDelta(${n})">${n>0?'+':''}${n}</button>`).join('')}</div>
+      <div class="tm-row"><input id="tm-amt" type="number" min="1" placeholder="valor" onkeydown="if(event.key==='Enter')tmCustom(-1)"><button class="btn small" onclick="tmCustom(-1)">DANO</button><button class="btn small ghost" onclick="tmCustom(1)">CURA</button></div>`:'')
+    +`<div class="tm-row"><button class="btn small ghost" onclick="openSheet('${tmId}');closeTokenMenu()">FICHA</button>${state.turnOrder.includes(tmId)?`<button class="btn small ghost" onclick="tmFocusTurn()">DAR O TURNO</button>`:''}</div>`;
+  document.body.appendChild(m);
+  const r=tok.getBoundingClientRect(), w=m.offsetWidth, h=m.offsetHeight;
+  m.style.left=Math.max(6,Math.min(innerWidth-w-6,r.left+r.width/2-w/2))+'px';
+  let top=r.bottom+8; if(top+h>innerHeight-6) top=Math.max(6,r.top-h-8);
+  m.style.top=top+'px';
+}
+function tmDelta(n){ if(!tmId) return; applyDelta(tmId,n); renderTokenMenu(); }
+function tmCustom(sign){
+  const el=document.getElementById('tm-amt'); const v=Math.abs(parseInt(el&&el.value,10));
+  if(!v||!tmId) return;
+  applyDelta(tmId,sign*v); renderTokenMenu();
+  const n=document.getElementById('tm-amt'); if(n) n.focus();
+}
+function tmFocusTurn(){
+  const i=state.turnOrder.indexOf(tmId); if(i<0) return;
+  state.turn=i; resetTurnSlots(); renderTurns(); renderParticipants();
+  const ta=currentTurnActor(); if(ta) addLog(`Rodada ${state.round} — turno de ${escHtml(ta.short)}.`,'turn');
+  closeTokenMenu();
+}
+document.addEventListener('pointerdown',e=>{ if(tmId && !e.target.closest('#token-menu') && !e.target.closest('.token')) closeTokenMenu(); },true);
+// atalhos do mestre: N = próximo turno, P = turno anterior, Esc = fecha o menu do token
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ closeTokenMenu(); return; }
+  if(role!=='gm'||e.ctrlKey||e.metaKey||e.altKey) return;
+  if(/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||'')) return;
+  if(document.querySelector('.overlay.active')) return;
+  const k=e.key.toLowerCase();
+  if(k==='n') nextTurn(); else if(k==='p') prevTurn();
+});
 function addStatus(id,st){const c=findObj(id); if(!c||c.status.includes(st))return; if(c.status.includes('NORMAL')) c.status=c.status.filter(s=>s!=='NORMAL'); c.status.push(st); addLog(`${c.short} recebeu status ${st}.`,'status'); renderParticipants(); renderEnemiesList(); if(gmActivePane==='chars')gmRenderChars();}
 function removeStatus(id,st){const c=findObj(id); if(!c)return; c.status=c.status.filter(s=>s!==st); if(!c.status.length)c.status=['NORMAL']; addLog(`${c.short} perdeu status ${st}.`,'status'); renderParticipants(); renderEnemiesList(); if(gmActivePane==='chars')gmRenderChars();}
 
@@ -2363,19 +2389,16 @@ function musicAdd(){
   let name=(g('mus-name').value||'').trim(); const tags=musicParseTags(g('mus-tags').value);
   const editing=music.editId?state.tracks.find(t=>t.id===music.editId):null;
   if(!editing && !file && !url){ alert('Escolha um arquivo de áudio ou cole um link direto.'); return; }
-  if(!name) name=file?file.name.replace(/\.[^.]+$/,''):(editing?editing.name:url.split('/').pop()||'FAIXA');
-  if(file){
-    if(file.size>MUS_MAX){alert('O limite por faixa é 6 MB para sincronizar com todos. Comprima o áudio em MP3 ou use um link direto.');return;}
-    const reader=new FileReader();
-    reader.onload=()=>{const src=reader.result; if(editing){editing.name=name;editing.tags=tags;editing.src=src;editing.blob=false;if(music.currentId===editing.id)musicPlay(editing.id);music.editId=null;}else state.tracks.push({id:'t'+Date.now()+Math.random().toString(36).slice(2,5),name,tags,src,blob:false});gmRenderMusic();};
-    reader.onerror=()=>alert('Não foi possível ler esse arquivo de áudio.');reader.readAsDataURL(file);return;
-  }
-  const src=url||null;
-  if(editing){editing.name=name;editing.tags=tags;if(src){editing.src=src;editing.blob=false;if(music.currentId===editing.id)musicPlay(editing.id);}music.editId=null;}
-  else state.tracks.push({id:'t'+Date.now()+Math.random().toString(36).slice(2,5),name,tags,src,blob:false});
+  if(!name) name= file? file.name.replace(/\.[^.]+$/,'') : (editing? editing.name : url.split('/').pop()||'FAIXA');
+  let src=null,blob=false;
+  if(file){ src=URL.createObjectURL(file); blob=true; } else if(url){ src=url; }
+  if(editing){
+    editing.name=name; editing.tags=tags;
+    if(src){ if(editing.blob) URL.revokeObjectURL(editing.src); editing.src=src; editing.blob=blob; if(music.currentId===editing.id) musicPlay(editing.id); }
+    music.editId=null;
+  } else state.tracks.push({id:'t'+Date.now()+Math.random().toString(36).slice(2,5),name,tags,src,blob});
   gmRenderMusic();
 }
-
 function musicEdit(id){ music.editId=id; gmRenderMusic(); }
 function musicCancelEdit(){ music.editId=null; gmRenderMusic(); }
 function musicDelete(id){
@@ -2764,37 +2787,8 @@ function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.dr
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=4"></script>
-<script src="online.js?v=4"></script>
-<script id="d0-improvements-js">
-(function(){
-  // Ações diretas no token para o mestre; players continuam abrindo a própria ficha.
-  let actionMenu=null;
-  function closeActionMenu(){if(actionMenu){actionMenu.remove();actionMenu=null;}}
-  window.addEventListener('click',e=>{if(actionMenu&&!actionMenu.contains(e.target)&&!e.target.closest('.token'))closeActionMenu();});
-  const oldRenderTokens=renderTokens;
-  renderTokens=function(){oldRenderTokens();document.querySelectorAll('#map-wrap .token').forEach(t=>{if(t.dataset.quickBound)return;t.dataset.quickBound='1';t.addEventListener('contextmenu',e=>{if(role!=='gm')return;e.preventDefault();e.stopPropagation();closeActionMenu();const id=t.dataset.id,c=findObj(id);if(!c)return;actionMenu=document.createElement('div');actionMenu.className='token-action-menu';actionMenu.style.left=Math.min(e.clientX,innerWidth-190)+'px';actionMenu.style.top=Math.min(e.clientY,innerHeight-210)+'px';actionMenu.innerHTML=`<strong>${String(c.short||'TOKEN').replace(/[<>]/g,'')}</strong><button data-a="dmg">⚔ Aplicar dano</button><button data-a="heal">✚ Curar</button><button data-a="status">◈ Adicionar status</button><button data-a="sheet">Abrir ficha</button><button data-a="close">Fechar</button>`;document.body.appendChild(actionMenu);actionMenu.querySelectorAll('button').forEach(b=>b.onclick=()=>{const a=b.dataset.a;closeActionMenu();if(a==='dmg'||a==='heal'){const raw=prompt(a==='dmg'?'Quanto dano aplicar?':'Quanto HP restaurar?','10');if(raw===null)return;const n=Math.max(0,parseInt(raw,10)||0);if(n)applyDelta(id,a==='dmg'?-n:n);}else if(a==='status'){const st=prompt('Nome do status:');if(st&&st.trim())addStatus(id,st.trim().toUpperCase());}else if(a==='sheet')openSheet(id);});});});};
-  // Atalho N/→ para próximo turno; P/← para anterior; espaço controla timer apenas quando não se está digitando.
-  document.addEventListener('keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey)return;const a=document.activeElement;if(a&&(/INPUT|TEXTAREA|SELECT/.test(a.tagName)||a.isContentEditable))return;if(!document.getElementById('screen-session')?.classList.contains('active'))return;if(e.key==='n'||e.key==='N'||e.key==='ArrowRight'){if(role==='gm'){e.preventDefault();nextTurn();}}else if(e.key==='p'||e.key==='P'||e.key==='ArrowLeft'){if(role==='gm'){e.preventDefault();prevTurn();}}else if(e.code==='Space'&&role==='gm'){e.preventDefault();toggleTimer();}});
-  // Organiza comandos em menus para reduzir a poluição visual; controles essenciais ficam acessíveis.
-  function groupToolbar(){const bar=document.querySelector('.map-toolbar');if(!bar||bar.dataset.grouped)return;bar.dataset.grouped='1';const groups=[
-    {name:'MAPA ▾',ids:['btn-grid','btn-freveal','btn-fhide','btn-rooms']},
-    {name:'MÍDIA ▾',ids:['btn-music']},
-    {name:'MESTRE ▾',ids:['btn-report']}
-  ];groups.forEach(g=>{const nodes=g.ids.map(id=>document.getElementById(id)).filter(Boolean);if(!nodes.length)return;const d=document.createElement('details');d.className='map-menu';const sum=document.createElement('summary');sum.textContent=g.name;const pop=document.createElement('div');pop.className='menu-pop';nodes.forEach(n=>{n.parentNode&&n.parentNode.removeChild(n);pop.appendChild(n);});d.append(sum,pop);bar.insertBefore(d,bar.firstChild);});}
-  // A gaveta de fichas abre ao tocar no puxador/área da barra lateral.
-  function setupDrawer(){const side=document.getElementById('sidebar');if(!side||side.dataset.drawer)return;side.dataset.drawer='1';side.addEventListener('click',e=>{if(e.target===side||e.target.matches(':before'))side.classList.toggle('open');});const h=side.querySelector('h3');if(h)h.addEventListener('click',()=>side.classList.toggle('open'));}
-  // Menos ruído: painel de histórico pode ser retraído e mensagens mantêm um único compositor por vez.
-  const oldSendMsg=window.sendMsg;window.sendMsg=function(){oldSendMsg();const t=document.getElementById('msg-text');if(t)t.value='';};
-  const oldSendWhisper=window.sendWhisper;window.sendWhisper=function(){oldSendWhisper();const t=document.getElementById('wh-text');if(t)t.value='';};
-  // Persistência local continua como fallback; online.js também sincroniza setups pelo Firebase.
-  const oldPersist=window.persistSetups;window.persistSetups=function(){try{localStorage.setItem('dept0_setups',JSON.stringify(state.setups));}catch(e){}if(window.ONLINE_ON&&window.ONLINE_READY)window.dispatchEvent(new CustomEvent('d0:setups-changed',{detail:state.setups}));};
-  const oldLoad=window.loadSetups;window.loadSetups=function(){oldLoad();if(window.ONLINE_ON&&Array.isArray(state.setups)&&state.setups.length)window.dispatchEvent(new CustomEvent('d0:setups-changed',{detail:state.setups}));};
-  function boot(){groupToolbar();setupDrawer();const side=document.getElementById('sidebar');if(side){const b=document.getElementById('btn-mobile-side');if(b)b.textContent='☰ FICHAS';} }
-  document.addEventListener('DOMContentLoaded',boot);setTimeout(boot,100);setTimeout(boot,700);
-})();
-</script>
-
+<script src="firebase-config.js?v=6"></script>
+<script src="online.js?v=6"></script>
 </body>
 </html>
 

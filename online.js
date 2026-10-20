@@ -15,7 +15,7 @@
   const ref = db.ref(raiz + '/d');
   const imgRef = db.ref(raiz + '/img');
 
-  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','timerSec','timerRunning','timerAt','setups','activeSetup','tracks'];
+  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','timerSec','timerRunning','timerAt'];
   const MAX_LOG = 200;
   const INTERVALO = 250;           // ms entre envios
   const contasDoCodigo = {};
@@ -159,6 +159,7 @@
         const nova = lista(state.log, p[1], v);
         state.log.sort((x, y) => (x.ts || 0) - (y.ts || 0));
         sujo.log = true;
+        if(nova && pronto && v.cat === 'hp' && v.tid && Date.now() - (v.ts || 0) < 6000) (sujo.dmg = sujo.dmg || []).push([v.tid, v.real]);
         if(nova && pronto && v.k !== 'act' && typeof msgVisible === 'function' && role === 'player' && v.from !== state.currentPlayer && msgVisible(v)) sujo.avisar = true;
         break; }
       case 'a':
@@ -204,12 +205,6 @@
   }
   badge.textContent = 'conectando...'; badge.style.color = '#aaa';
 
-  // Setups de cena e biblioteca de faixas ficam na sala Firebase, não só no navegador do mestre.
-  window.addEventListener('d0:setups-changed', e => {
-    if(!e.detail || !Array.isArray(e.detail)) return;
-    state.setups = e.detail;
-    if(typeof state.activeSetup === 'undefined') state.activeSetup = null;
-  });
   db.ref('.info/connected').on('value', s => { conectado = !!s.val(); status(); });
   // relógio do servidor: o timer fica igual para todos, mesmo com relógios de PC diferentes
   db.ref('.info/serverTimeOffset').on('value', s => { timerOffset = +s.val() || 0; });
@@ -306,6 +301,7 @@
     // só a posição mudou (alguém moveu um token): atualiza só os tokens, sem refazer as listas
     passo('pos', () => { renderTokens(); if(state.fogLevel > 0 && state.fogCfg.vision) renderFog(); });
 
+    passo('dmg', () => { (sujo.dmg || []).forEach(d => { if(typeof showFloatDmg === 'function' && d[1]) showFloatDmg(d[0], d[1]); }); });
     passo('log', () => renderLog());
     passo('avisar', () => { if(typeof logNotify === 'function') logNotify(); });
     passo('notas', () => {
@@ -352,6 +348,55 @@
     ref.on('child_removed', s => { delete last[s.key]; processar(s.key, null); desenharLogo(); }, erroFirebase);
     if(typeof autoLogin === 'function') autoLogin();   // depois do F5, volta pra sessão sozinho
   }).catch(erroFirebase);
+
+
+  // ---- dados só do mestre: setups de cena e faixas de música por link ----
+  // Ficam em outro caminho (campanhas/SALA/gm) e só o mestre baixa/envia; os players nunca carregam isso.
+  const gmRef = db.ref(raiz + '/gm');
+  let gmOn = false, gmReady = false, gmLast = '';
+  function gmPack(){
+    return {
+      setups: state.setups || [],
+      tracks: (state.tracks || []).filter(t => !t.blob).map(t => ({ id: t.id, name: t.name, tags: t.tags || [], src: t.src }))
+    };
+  }
+  function gmStart(){
+    gmOn = true;
+    gmRef.once('value').then(s => {
+      const v = s.val();
+      if(!v || !v.d){ gmReady = true; return; }
+      const r = ler(v.d);
+      return Promise.all(r.falta.map(id => buscar(id, 0))).then(() => {
+        const r2 = ler(v.d);
+        // se alguma imagem ainda não chegou, NÃO libera o envio (senão apagaria a imagem lá no servidor)
+        if(r2.falta.length){ gmOn = false; return; }
+        const d = r2.v, local = state.setups || [];
+        const ids = new Set(local.map(x => x.id));
+        (d.setups || []).forEach(sp => { if(!ids.has(sp.id)) local.push(sp); });
+        state.setups = local;
+        const tids = new Set((state.tracks || []).map(t => t.id));
+        (d.tracks || []).forEach(t => { if(!tids.has(t.id)) state.tracks.push(t); });
+        try{ localStorage.setItem('dept0_setups', JSON.stringify(state.setups)); }catch(e){}
+        if(typeof musicRefreshUI === 'function') musicRefreshUI();
+        gmReady = true;
+      });
+    }).catch(e => { gmOn = false; erroFirebase(e); });
+  }
+  function gmEnviar(){
+    if(!gmReady || role !== 'gm') return;
+    novas = {}; refs = {}; curK = 'gm';
+    const str = js(gmPack());
+    if(str === gmLast) return;
+    gmLast = str;
+    const subs = Object.keys(novas).filter(id => !subidas.has(id)).map(id => {
+      subidas.add(id);
+      return imgRef.child(id).set(novas[id]).catch(e => { subidas.delete(id); gmLast = ''; erroFirebase(e); });
+    });
+    Promise.all(subs).then(() => { if(gmLast === str) return gmRef.set({ d: str, ts: Date.now() }); })
+      .catch(e => { gmLast = ''; erroFirebase(e); });
+  }
+  setInterval(() => { if(pronto && role === 'gm' && !gmOn) gmStart(); }, 1000);
+  setInterval(gmEnviar, 3000);
 
   // última tentativa de mandar o que ficou pendente ao fechar/atualizar a página
   window.addEventListener('pagehide', enviar);
