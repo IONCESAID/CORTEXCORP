@@ -15,7 +15,7 @@
   const ref = db.ref(raiz + '/d');
   const imgRef = db.ref(raiz + '/img');
 
-  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','timerSec','timerRunning','timerAt'];
+  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','timerSec','timerRunning','timerAt'];
   const MAX_LOG = 200;
   const INTERVALO = 250;           // ms entre envios
   const contasDoCodigo = {};
@@ -122,7 +122,7 @@
 
   const AREA = { chapter:'chap', location:'chap', turnOrder:'turno', turn:'turno', round:'turno', turnSlots:'turno',
     grid:'grid', fogLevel:'fog', fogCfg:'fog', rooms:'salas', mapBackground:'mapa', mapImages:'imgs', spotlight:'imgs',
-    drawings:'draw' };
+    drawings:'draw', musicNow:'music' };
 
   function aplicar(k, v){
     const p = k.split('|').map(decodeURIComponent), N = state.notes;
@@ -281,6 +281,7 @@
     passo('fog', () => { renderFog(); updateFogButtons(); });
     passo('chap', () => { document.getElementById('chap-label').textContent = state.chapter + ' · ' + state.location; });
     passo('imgs', () => renderMapImages());
+    passo('music', () => { if(typeof musicApply === 'function') musicApply(); });
     passo('draw', () => { if(typeof drawing !== 'undefined' && drawing) return 'adiar'; renderDraw(); });
 
     if(sujo.turno){ sujo.chars = true; sujo.turno = false; }
@@ -291,6 +292,8 @@
       [renderTokens, renderParticipants, renderEnemiesList, renderNpcsList, renderTurns, msgComposerUpdate].forEach(f => {
         try{ f(); }catch(e){ if(!primeiro) primeiro = e; console.log('online.js: erro em', f.name, e); }
       });
+      // a visão dos players (fog) segue os tokens: refaz quando qualquer personagem mudou de lugar
+      if(state.fogLevel > 0 && state.fogCfg.vision){ try{ renderFog(); }catch(e){ if(!primeiro) primeiro = e; } }
       if(primeiro) throw primeiro;
     });
     if(charsEra && !sujo.chars) sujo.pos = false;     // os tokens já foram atualizados acima
@@ -314,7 +317,7 @@
   goto = function(id){
     gotoOriginal(id);
     if(id === 'session'){
-      ['mapa','grid','salas','fog','chap','imgs','draw','chars','turno','log','notas'].forEach(x => sujo[x] = true);
+      ['mapa','grid','salas','fog','chap','imgs','draw','music','chars','turno','log','notas'].forEach(x => sujo[x] = true);
       setTimeout(desenhar, 0);
     }
   };
@@ -331,7 +334,7 @@
   ref.once('value').then(snap => {
     const tudo = snap.val() || {};
     Object.keys(tudo).forEach(k => { last[k] = tudo[k]; processar(k, tudo[k]); });
-    ['mapa','grid','salas','fog','chap','imgs','draw','chars','turno','log','notas'].forEach(x => sujo[x] = true);
+    ['mapa','grid','salas','fog','chap','imgs','draw','music','chars','turno','log','notas'].forEach(x => sujo[x] = true);
     pronto = true;
     window.ONLINE_READY = true;
     recebidoEm = hora();

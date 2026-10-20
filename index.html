@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <div id="app">
@@ -347,7 +347,7 @@
 let role=null, currentLoginId=null, roomsRole=null;
 const state={
   chapter:'CAPÍTULO 01 — ORIENTAÇÃO', location:'CORTEX HEADQUARTERS',
-  timerSec:0, timerRunning:false, timerAt:0, turn:0, round:1, startedAt:Date.now(), mapBackground:null,
+  timerSec:0, timerRunning:false, timerAt:0, musicNow:null, turn:0, round:1, startedAt:Date.now(), mapBackground:null,
   turnOrder:[],
   grid:false, fogLevel:0,
   fogCfg:{vision:false,radius:14,brush:12,tool:'',holes:[]},
@@ -402,6 +402,7 @@ function doLogin(){
     return;
   }
   role=acc.role; currentLoginId=id;
+  musicUnlock(); if(role==='gm') musicPublish();
   try{ sessionStorage.setItem('d0login',JSON.stringify({id,pass})); }catch(e){}
   if(role==='player') state.currentPlayer=acc.character||null;
   msg.style.color='var(--term)';
@@ -410,6 +411,7 @@ function doLogin(){
   setTimeout(()=>{ goto('session'); updateUserBadge(); },450);
 }
 function doLogout(){
+  if(role==='gm') musicHalt();
   try{ sessionStorage.removeItem('d0login'); }catch(e){}
   role=null; state.currentPlayer=null; (function(){const b=document.getElementById('log-list'); if(b) b.innerHTML='';})(); document.getElementById('emp-id').value=''; document.getElementById('emp-pass').value=''; 
   document.getElementById('login-msg').textContent='';
@@ -2216,33 +2218,101 @@ function musicEffVol(){ return Math.max(0,Math.min(1,music.volume*(role==='playe
 function musicSetLocalVolume(v){ music.localVol=v/100; music.audio.volume=musicEffVol(); }
 music.audio.loop=true; music.audio.volume=.7;
 music.audio.addEventListener('ended',()=>musicRefreshUI());
-music.audio.addEventListener('error',()=>{ if(music.audio.src) addLog('⚠ Não foi possível tocar a faixa atual.'); });
+music.audio.addEventListener('error',()=>{ if(role==='gm' && music.audio.src) addLog('⚠ Não foi possível tocar a faixa atual.'); });
 function musicAllTags(){ return [...new Set(state.tracks.flatMap(t=>t.tags))].sort(); }
 function musicParseTags(str){ return [...new Set((str||'').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean))]; }
+// ---------- MÚSICA SINCRONIZADA ----------
+// O mestre toca localmente e publica "musicNow" (faixa, play/pause, posição, volume). Os players seguem.
+// Arquivos locais (blob) são convertidos em data URL (até 6 MB) para trafegar pelo Firebase; links diretos vão como link.
+const MUS_MAX=6*1024*1024;
+const SILENT_WAV='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+music.cache={}; music.pubTok=0; music.blocked=false; music._src=''; music._rev='';
+function musicDataFor(t){
+  if(!t.blob) return Promise.resolve(t.src);
+  if(music.cache[t.id]!==undefined) return Promise.resolve(music.cache[t.id]);
+  return fetch(t.src).then(r=>r.blob()).then(bl=>{
+    if(bl.size>MUS_MAX){
+      music.cache[t.id]='';
+      alert('"'+t.name+'" tem '+(bl.size/1048576).toFixed(1)+' MB: grande demais pra enviar aos players.\nUse um arquivo de até 6 MB (MP3 mais comprimido) ou cole um link direto (pode ser um mp3 hospedado no seu repositório).');
+      return '';
+    }
+    return new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>{ music.cache[t.id]=fr.result; res(fr.result); }; fr.readAsDataURL(bl); });
+  }).catch(()=>'');
+}
+function musicPublish(){
+  if(role!=='gm') return;
+  const cur=state.tracks.find(t=>t.id===music.currentId);
+  const base={rev:Date.now()+'-'+Math.random().toString(36).slice(2,5),vol:music.volume,loop:music.audio.loop};
+  const tok=++music.pubTok;
+  if(!cur){ state.musicNow=Object.assign(base,{src:'',name:'',playing:false,pos:0,at:0}); return; }
+  musicDataFor(cur).then(src=>{
+    if(tok!==music.pubTok) return;
+    state.musicNow=Object.assign(base,{name:cur.name,src:src||'',playing:!music.audio.paused,pos:music.audio.currentTime||0,at:Date.now()+timerOffset});
+  });
+}
+function musicSetBlocked(b){
+  music.blocked=b;
+  let bt=document.getElementById('music-unlock');
+  if(b && !bt){
+    bt=document.createElement('button'); bt.id='music-unlock'; bt.className='btn small';
+    bt.style.cssText='position:fixed;right:12px;bottom:12px;z-index:9998';
+    bt.textContent='♪ ATIVAR SOM'; bt.onclick=()=>musicApply();
+    document.body.appendChild(bt);
+  }
+  if(bt) bt.style.display=b?'':'none';
+}
+document.addEventListener('pointerdown',()=>{ if(music.blocked) musicApply(); },true);
+// chamado dentro de um clique (login) pra liberar o áudio no navegador do player
+function musicUnlock(){
+  if(role!=='player') return;
+  const a=music.audio; a.loop=false; music._src=''; music._rev=''; a.src=SILENT_WAV;
+  a.play().catch(()=>{});
+}
+function musicApply(){
+  if(role!=='player') return;
+  const m=state.musicNow, a=music.audio;
+  if(!m || !m.src){ if(!a.paused) a.pause(); music._src=''; music._rev=''; musicSetBlocked(false); return; }
+  music.volume=(typeof m.vol==='number')?m.vol:.7; a.volume=musicEffVol(); a.loop=!!m.loop;
+  if(music._src!==m.src){ music._src=m.src; music._rev=''; a.src=m.src; }
+  if(!m.playing){ a.pause(); musicSetBlocked(false); return; }
+  if(a.readyState<1){ a.addEventListener('loadedmetadata',musicApply,{once:true}); return; }
+  if(music._rev!==m.rev){      // só reposiciona quando o mestre fez algo novo (não a cada ajuste de volume)
+    let t=(m.pos||0)+Math.max(0,(Date.now()+timerOffset-m.at)/1000);
+    if(isFinite(a.duration) && a.duration>0){ t=a.loop? t%a.duration : Math.min(t,a.duration-.05); }
+    try{ a.currentTime=t; }catch(e){}
+    music._rev=m.rev;
+  }
+  a.play().then(()=>musicSetBlocked(false)).catch(()=>musicSetBlocked(true));
+}
 function musicPlay(id){
   const t=state.tracks.find(x=>x.id===id); if(!t) return;
   clearInterval(music.fadeT);
   if(role!=='gm') return;
   music.audio.src=t.src; music.audio.volume=musicEffVol(); music.currentId=id;
   music.audio.play().catch(()=>addLog('⚠ O navegador bloqueou o áudio — clique de novo em ▶.'));
+  musicPublish();
   addLog('♪ Tocando: '+t.name); musicRefreshUI();
 }
 function musicToggle(){
   if(role!=='gm' || !music.currentId) return;
   if(music.audio.paused) music.audio.play(); else music.audio.pause();
-  musicRefreshUI();
+  musicPublish(); musicRefreshUI();
 }
-function musicHalt(){ clearInterval(music.fadeT); music.audio.pause(); music.audio.currentTime=0; music.audio.volume=musicEffVol(); music.currentId=null; musicRefreshUI(); }
+function musicHalt(){
+  clearInterval(music.fadeT); music.audio.pause(); music.audio.currentTime=0; music.audio.volume=musicEffVol(); music.currentId=null;
+  music._src=''; music._rev='';
+  musicPublish(); musicRefreshUI();
+}
 function musicStop(){ if(role!=='gm') return; musicHalt(); }
 function musicFade(){
   if(role!=='gm' || !music.currentId) return; clearInterval(music.fadeT);
   music.fadeT=setInterval(()=>{
     const v=music.audio.volume-0.05;
-    if(v<=0){ musicHalt(); } else music.audio.volume=v;
+    if(v<=0){ musicHalt(); } else { music.audio.volume=v; if(state.musicNow) state.musicNow.vol=v; }
   },100);
 }
-function musicSetVolume(v){ if(role!=='gm') return; music.volume=v/100; music.audio.volume=musicEffVol(); }
-function musicSetLoop(on){ music.audio.loop=!!on; }
+function musicSetVolume(v){ if(role!=='gm') return; music.volume=v/100; music.audio.volume=musicEffVol(); if(state.musicNow) state.musicNow.vol=music.volume; }
+function musicSetLoop(on){ music.audio.loop=!!on; if(role==='gm' && state.musicNow) state.musicNow.loop=!!on; }
 function musicSetFilterIdx(i){ music.filter= i<0? '' : (musicAllTags()[i]||''); gmRenderMusic(); }
 function musicAdd(){
   const g=id=>document.getElementById(id);
@@ -2648,8 +2718,8 @@ function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.dr
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=3"></script>
-<script src="online.js?v=3"></script>
+<script src="firebase-config.js?v=4"></script>
+<script src="online.js?v=4"></script>
 </body>
 </html>
 
