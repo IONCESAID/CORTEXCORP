@@ -645,3 +645,7 @@ button.tag-chip{cursor:pointer}
 #draw-bar{display:none;gap:4px;align-items:center;border:1px solid var(--line,#888);padding:2px 6px;font:11px monospace}
 #draw-bar button{font:inherit;cursor:pointer}#draw-bar button.on{background:#f2d13b;color:#000}
 .draw-mode .token{pointer-events:none}
+
+/* tokens deslizam suavemente quando OUTRO jogador move; o token que você arrasta segue o dedo sem atraso */
+.token:not(.dragging-now){transition:left .3s ease-out, top .3s ease-out}
+.token.dragging-now{z-index:50;cursor:grabbing}

@@ -6,21 +6,29 @@
     return;
   }
 
+  window.ONLINE_ON = true;      // o login espera ONLINE_READY (dados já baixados)
+  window.ONLINE_READY = false;
+
   firebase.initializeApp(FIREBASE_CONFIG);
   const db = firebase.database();
   const raiz = 'campanhas/' + SALA;
   const ref = db.ref(raiz + '/d');
   const imgRef = db.ref(raiz + '/img');
 
-  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight'];
+  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','timerSec','timerRunning','timerAt'];
   const MAX_LOG = 200;
+  const INTERVALO = 250;           // ms entre envios
   const contasDoCodigo = {};
   Object.keys(ACCOUNTS).forEach(k => { if(ACCOUNTS[k].role === 'gm') contasDoCodigo[k] = ACCOUNTS[k]; });
 
   const last = {}, memo = new Map(), subidas = new Set(), cacheImg = {};
-  let novas = {};
+  // chaves cujo valor ainda tem imagem sendo baixada (ou deu erro ao aplicar).
+  // NUNCA enviamos essas chaves: o estado local tem '' no lugar da imagem e mandar isso apagaria a imagem de todo mundo.
+  const pend = new Set();
+  let novas = {}, refs = {}, curK = '';
   let pronto = false, conectado = false, enviadoEm = '-', recebidoEm = '-', erro = '';
   let sujo = {};
+  const falhas = {};
 
   const enc = s => encodeURIComponent(s).replace(/\./g, '%2E');
   const K = (...p) => p.map(enc).join('|');
@@ -44,6 +52,7 @@
   const rep = (k, v) => {
     if(typeof v === 'string' && v.length > 3000 && v.indexOf('data:') === 0){
       const id = imgId(v);
+      (refs[curK] || (refs[curK] = [])).push(id);
       if(!subidas.has(id)) novas[id] = v;
       return '@img:' + id;
     }
@@ -69,32 +78,35 @@
     return imgRef.child(id).once('value').then(s => {
       const d = s.val();
       if(d){ cacheImg[id] = d; subidas.add(id); memo.set(d, id); return; }
-      if(tent < 6) return new Promise(r => setTimeout(r, 1500)).then(() => buscar(id, tent + 1));
+      if(tent < 20) return new Promise(r => setTimeout(r, 1500)).then(() => buscar(id, tent + 1));
+    }).catch(() => {
+      if(tent < 20) return new Promise(r => setTimeout(r, 3000)).then(() => buscar(id, tent + 1));
     });
   }
 
   function juntar(){
-    novas = {};
+    novas = {}; refs = {};
     const m = {};
-    WHOLE.forEach(k => { if(state[k] !== undefined) m[K('w', k)] = js(state[k]); });
+    const put = (k, v) => { curK = k; m[k] = js(v); };
+    WHOLE.forEach(k => { if(state[k] !== undefined) put(K('w', k), state[k]); });
     const fc = Object.assign({}, state.fogCfg); delete fc.tool;
-    m[K('w', 'fogCfg')] = js(fc);
-    if(typeof turnSlotState !== 'undefined') m[K('w', 'turnSlots')] = js(turnSlotState);
+    put(K('w', 'fogCfg'), fc);
+    if(typeof turnSlotState !== 'undefined') put(K('w', 'turnSlots'), turnSlotState);
     ['characters','enemies','npcs'].forEach(g => {
       Object.keys(state[g]).forEach(id => {
         const o = state[g][id];
-        Object.keys(o).forEach(f => { if(o[f] !== undefined) m[K('f', g, id, f)] = js(o[f]); });
+        Object.keys(o).forEach(f => { if(o[f] !== undefined) put(K('f', g, id, f), o[f]); });
       });
     });
     const N = state.notes;
-    N.shared.forEach(n => { if(!n.id) n.id = novoId(); m[K('s', n.id)] = js(n); });
-    (N.links || []).forEach(l => { m[K('l', l.id)] = js(l); });
-    Object.keys(N.private).forEach(o => N.private[o].forEach(n => { if(!n.id) n.id = novoId(); m[K('p', o, n.id)] = js(n); }));
-    Object.keys(N.privateLinks || {}).forEach(o => N.privateLinks[o].forEach(l => { m[K('q', o, l.id)] = js(l); }));
-    state.log.slice(-MAX_LOG).forEach(e => { if(!e.id) e.id = novoId(); m[K('g', e.id)] = js(e); });
+    N.shared.forEach(n => { if(!n.id) n.id = novoId(); put(K('s', n.id), n); });
+    (N.links || []).forEach(l => { put(K('l', l.id), l); });
+    Object.keys(N.private).forEach(o => N.private[o].forEach(n => { if(!n.id) n.id = novoId(); put(K('p', o, n.id), n); }));
+    Object.keys(N.privateLinks || {}).forEach(o => N.privateLinks[o].forEach(l => { put(K('q', o, l.id), l); }));
+    state.log.slice(-MAX_LOG).forEach(e => { if(!e.id) e.id = novoId(); put(K('g', e.id), e); });
     const contas = {};
     Object.keys(ACCOUNTS).forEach(k => { if(ACCOUNTS[k].role !== 'gm') contas[k] = ACCOUNTS[k]; });
-    m[K('a')] = js(contas);
+    put(K('a'), contas);
     return m;
   }
 
@@ -109,7 +121,8 @@
   }
 
   const AREA = { chapter:'chap', location:'chap', turnOrder:'turno', turn:'turno', round:'turno', turnSlots:'turno',
-    grid:'grid', fogLevel:'fog', fogCfg:'fog', rooms:'salas', mapBackground:'mapa', mapImages:'imgs', spotlight:'imgs' };
+    grid:'grid', fogLevel:'fog', fogCfg:'fog', rooms:'salas', mapBackground:'mapa', mapImages:'imgs', spotlight:'imgs',
+    drawings:'draw' };
 
   function aplicar(k, v){
     const p = k.split('|').map(decodeURIComponent), N = state.notes;
@@ -123,13 +136,17 @@
         break;
       case 'f': {
         const g = state[p[1]];
+        const pos = (p[3] === 'x' || p[3] === 'y');
+        // quem está arrastando o token manda na posição dele; o valor remoto não "puxa" de volta
+        if(pos && v !== undefined && typeof dragTok !== 'undefined' && dragTok && dragTok.dataset.id === p[2]) break;
         if(v === undefined){
           if(g[p[2]]){ delete g[p[2]][p[3]]; if(!Object.keys(g[p[2]]).length) delete g[p[2]]; }
+          sujo.chars = true;
         } else {
           if(!g[p[2]]) g[p[2]] = {};
           g[p[2]][p[3]] = v;
+          if(pos) sujo.pos = true; else sujo.chars = true;
         }
-        sujo.chars = true;
         break; }
       case 's': lista(N.shared, p[1], v); sujo.notas = true; break;
       case 'l': if(!N.links) N.links = []; lista(N.links, p[1], v); sujo.notas = true; break;
@@ -153,13 +170,26 @@
   }
 
   function processar(k, val){
-    if(val == null){ aplicar(k, undefined); return; }
-    const r = ler(val);
-    aplicar(k, r.v);
-    if(r.falta.length){
-      Promise.all(r.falta.map(id => buscar(id, 0))).then(() => {
-        if(last[k] === val){ aplicar(k, ler(val).v); desenharLogo(); }
-      });
+    try{
+      if(val == null){ pend.delete(k); aplicar(k, undefined); return; }
+      const r = ler(val);
+      aplicar(k, r.v);
+      if(r.falta.length){
+        pend.add(k);
+        Promise.all(r.falta.map(id => buscar(id, 0))).then(() => {
+          if(last[k] !== val) return;            // chegou valor mais novo; ele cuida de si
+          const r2 = ler(val);
+          if(r2.falta.length){                   // imagem ainda não existe: tenta de novo depois
+            setTimeout(() => { if(last[k] === val) processar(k, val); }, 15000);
+            return;
+          }
+          aplicar(k, r2.v); pend.delete(k); desenharLogo();
+        });
+      } else pend.delete(k);
+    }catch(e){
+      // falhou ao aplicar: o estado local ficou defasado, então NÃO pode ser enviado de volta
+      console.log('online.js: erro ao aplicar', k, e);
+      pend.add(k);
     }
   }
 
@@ -169,12 +199,14 @@
   function status(){
     if(erro){ badge.textContent = erro; badge.style.color = '#e01010'; return; }
     if(!conectado){ badge.textContent = 'sem conexão com o Firebase...'; badge.style.color = '#e0a020'; return; }
-    badge.textContent = 'ONLINE · sala ' + SALA + ' · enviou ' + enviadoEm + ' · recebeu ' + recebidoEm;
+    badge.textContent = 'ONLINE · sala ' + SALA + ' · enviou ' + enviadoEm + ' · recebeu ' + recebidoEm + (pend.size ? ' · baixando imagens' : '');
     badge.style.color = '#3fdc7a';
   }
   badge.textContent = 'conectando...'; badge.style.color = '#aaa';
 
   db.ref('.info/connected').on('value', s => { conectado = !!s.val(); status(); });
+  // relógio do servidor: o timer fica igual para todos, mesmo com relógios de PC diferentes
+  db.ref('.info/serverTimeOffset').on('value', s => { timerOffset = +s.val() || 0; });
 
   function erroFirebase(e){
     erro = 'erro Firebase: ' + (e.code || e.message || e) + ' (veja as Regras do banco)';
@@ -184,19 +216,33 @@
   function enviar(){
     if(!pronto) return;
     const agora = juntar(), up = {};
+    // chaves com imagem pendente/erro: considera "sem mudança"
+    pend.forEach(k => { if(k in last) agora[k] = last[k]; else delete agora[k]; });
     Object.keys(agora).forEach(k => { if(last[k] !== agora[k]){ up[k] = agora[k]; last[k] = agora[k]; } });
-    Object.keys(last).forEach(k => { if(!(k in agora)){ up[k] = null; delete last[k]; } });
+    Object.keys(last).forEach(k => { if(!(k in agora) && !pend.has(k)){ up[k] = null; delete last[k]; } });
     if(!Object.keys(up).length) return;
+
+    const falhou = new Set();
+    const meusRefs = refs;
     const subs = Object.keys(novas).filter(id => !subidas.has(id)).map(id => {
       subidas.add(id);
-      return imgRef.child(id).set(novas[id]).catch(e => { subidas.delete(id); throw e; });
+      return imgRef.child(id).set(novas[id]).catch(e => { subidas.delete(id); falhou.add(id); erroFirebase(e); });
     });
-    Promise.all(subs).then(() => ref.update(up)).then(() => {
-      enviadoEm = hora(); erro = ''; status();
-    }).catch(e => {
-      Object.keys(up).forEach(k => { if(up[k] !== null) delete last[k]; });
-      erroFirebase(e);
-    });
+
+    const mandar = () => {
+      // uma imagem que falhou não pode travar o resto (posição de token, HP, chat...)
+      Object.keys(up).forEach(k => {
+        if((meusRefs[k] || []).some(id => falhou.has(id))){ delete up[k]; delete last[k]; }
+      });
+      if(!Object.keys(up).length) return;
+      return ref.update(up).then(() => {
+        enviadoEm = hora(); erro = ''; status();
+      }).catch(e => {
+        Object.keys(up).forEach(k => { if(up[k] !== null) delete last[k]; });
+        erroFirebase(e);
+      });
+    };
+    if(subs.length) Promise.all(subs).then(mandar); else mandar();   // sem imagem: envia na hora (vale no pagehide)
   }
 
   let timer = null;
@@ -210,43 +256,65 @@
     const em = sel => digitando && a.closest && a.closest(sel);
     const arrastando = (typeof dragTok !== 'undefined' && dragTok) || (typeof dragImg !== 'undefined' && dragImg) || (typeof eviDrag !== 'undefined' && eviDrag);
     if(arrastando){ timer = setTimeout(desenhar, 300); return; }
-    try{
-      if(sujo.mapa){ applyMapBackground(state.mapBackground); sujo.mapa = false; }
-      if(sujo.grid){
-        const g = document.getElementById('grid-overlay'); if(g) g.classList.toggle('on', !!state.grid);
-        const b = document.getElementById('btn-grid'); if(b) b.classList.toggle('on-state', !!state.grid);
-        sujo.grid = false;
+
+    let de_novo = 0;
+    // cada parte da tela é independente: se uma quebrar, as outras (principalmente os tokens) continuam
+    const passo = (flag, fn) => {
+      if(!sujo[flag]) return;
+      try{
+        if(fn() === 'adiar'){ de_novo = Math.max(de_novo, 1000); return; }
+        sujo[flag] = false; falhas[flag] = 0;
+      }catch(e){
+        console.log('online.js: erro ao redesenhar (' + flag + ')', e);
+        falhas[flag] = (falhas[flag] || 0) + 1;
+        if(falhas[flag] >= 5){ sujo[flag] = false; falhas[flag] = 0; }
+        else de_novo = Math.max(de_novo, 500);
       }
-      if(sujo.salas){ renderRooms(); sujo.salas = false; }
-      if(sujo.fog){ renderFog(); updateFogButtons(); sujo.fog = false; }
-      if(sujo.chap){ document.getElementById('chap-label').textContent = state.chapter + ' · ' + state.location; sujo.chap = false; }
-      if(sujo.imgs){ renderMapImages(); sujo.imgs = false; }
-      if(sujo.chars || sujo.turno){
-        if(em('#participants-list,#enemies-list,#npcs-list,#turn-col')){ timer = setTimeout(desenhar, 1000); return; }
-        renderParticipants(); renderEnemiesList(); renderNpcsList(); renderTokens(); renderTurns(); msgComposerUpdate();
-        sujo.chars = false; sujo.turno = false;
+    };
+
+    passo('mapa', () => applyMapBackground(state.mapBackground));
+    passo('grid', () => {
+      const g = document.getElementById('grid-overlay'); if(g) g.classList.toggle('on', !!state.grid);
+      const b = document.getElementById('btn-grid'); if(b) b.classList.toggle('on-state', !!state.grid);
+    });
+    passo('salas', () => renderRooms());
+    passo('fog', () => { renderFog(); updateFogButtons(); });
+    passo('chap', () => { document.getElementById('chap-label').textContent = state.chapter + ' · ' + state.location; });
+    passo('imgs', () => renderMapImages());
+    passo('draw', () => { if(typeof drawing !== 'undefined' && drawing) return 'adiar'; renderDraw(); });
+
+    if(sujo.turno){ sujo.chars = true; sujo.turno = false; }
+    const charsEra = !!sujo.chars;
+    passo('chars', () => {
+      if(em('#participants-list,#enemies-list,#npcs-list,#turn-col')) return 'adiar';
+      let primeiro = null;
+      [renderTokens, renderParticipants, renderEnemiesList, renderNpcsList, renderTurns, msgComposerUpdate].forEach(f => {
+        try{ f(); }catch(e){ if(!primeiro) primeiro = e; console.log('online.js: erro em', f.name, e); }
+      });
+      if(primeiro) throw primeiro;
+    });
+    if(charsEra && !sujo.chars) sujo.pos = false;     // os tokens já foram atualizados acima
+    // só a posição mudou (alguém moveu um token): atualiza só os tokens, sem refazer as listas
+    passo('pos', () => { renderTokens(); if(state.fogLevel > 0 && state.fogCfg.vision) renderFog(); });
+
+    passo('log', () => renderLog());
+    passo('avisar', () => { if(typeof logNotify === 'function') logNotify(); });
+    passo('notas', () => {
+      const ov = document.getElementById('ov-notes');
+      if(ov && ov.classList.contains('active')){
+        if(em('#ov-notes')) return 'adiar';
+        renderNotes();
       }
-      if(sujo.log){ renderLog(); sujo.log = false; }
-      if(sujo.avisar){ if(typeof logNotify === 'function') logNotify(); sujo.avisar = false; }
-      if(sujo.notas){
-        const ov = document.getElementById('ov-notes');
-        if(ov && ov.classList.contains('active')){
-          if(em('#ov-notes')){ timer = setTimeout(desenhar, 1000); return; }
-          renderNotes();
-        }
-        sujo.notas = false;
-      }
-    }catch(e){
-      console.log('online.js: erro ao redesenhar', e);
-      timer = setTimeout(desenhar, 500);
-    }
+    });
+
+    if(de_novo) timer = setTimeout(desenhar, de_novo);
   }
 
   const gotoOriginal = goto;
   goto = function(id){
     gotoOriginal(id);
     if(id === 'session'){
-      ['mapa','grid','salas','fog','chap','imgs','chars','turno','log','notas'].forEach(x => sujo[x] = true);
+      ['mapa','grid','salas','fog','chap','imgs','draw','chars','turno','log','notas'].forEach(x => sujo[x] = true);
       setTimeout(desenhar, 0);
     }
   };
@@ -263,14 +331,20 @@
   ref.once('value').then(snap => {
     const tudo = snap.val() || {};
     Object.keys(tudo).forEach(k => { last[k] = tudo[k]; processar(k, tudo[k]); });
-    ['mapa','grid','salas','fog','chap','imgs','chars','turno','log','notas'].forEach(x => sujo[x] = true);
+    ['mapa','grid','salas','fog','chap','imgs','draw','chars','turno','log','notas'].forEach(x => sujo[x] = true);
     pronto = true;
+    window.ONLINE_READY = true;
     recebidoEm = hora();
     status();
     desenharLogo();
-    setInterval(enviar, 400);
+    setInterval(enviar, INTERVALO);
     ref.on('child_added', receber, erroFirebase);
     ref.on('child_changed', receber, erroFirebase);
     ref.on('child_removed', s => { delete last[s.key]; processar(s.key, null); desenharLogo(); }, erroFirebase);
+    if(typeof autoLogin === 'function') autoLogin();   // depois do F5, volta pra sessão sozinho
   }).catch(erroFirebase);
+
+  // última tentativa de mandar o que ficou pendente ao fechar/atualizar a página
+  window.addEventListener('pagehide', enviar);
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') enviar(); });
 })();

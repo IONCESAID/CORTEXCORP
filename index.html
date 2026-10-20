@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <div id="app">
@@ -124,7 +124,7 @@
       INICIAR
     </button>
 
-    <button class="btn small ghost" onclick="resetTimer()">
+    <button class="btn small ghost" onclick="resetTimer()" id="timer-reset">
       RESETAR TEMPO
     </button>
 
@@ -347,7 +347,7 @@
 let role=null, currentLoginId=null, roomsRole=null;
 const state={
   chapter:'CAPÍTULO 01 — ORIENTAÇÃO', location:'CORTEX HEADQUARTERS',
-  timerSec:0*60, timerRunning:false, turn:0, round:1, startedAt:Date.now(), mapBackground:null,
+  timerSec:0, timerRunning:false, timerAt:0, turn:0, round:1, startedAt:Date.now(), mapBackground:null,
   turnOrder:[],
   grid:false, fogLevel:0,
   fogCfg:{vision:false,radius:14,brush:12,tool:'',holes:[]},
@@ -388,6 +388,10 @@ const ACCOUNTS={
   '2':{password:'2', role:'player'}
 };
 function doLogin(){
+  if(window.ONLINE_ON && !window.ONLINE_READY){
+    const m=document.getElementById('login-msg'); m.style.color='var(--amber)';
+    m.textContent='SINCRONIZANDO COM O SERVIDOR... TENTE DE NOVO EM INSTANTES.'; return;
+  }
   const id=document.getElementById('emp-id').value.trim().toUpperCase();
   const pass=document.getElementById('emp-pass').value;
   const acc=ACCOUNTS[id];
@@ -398,6 +402,7 @@ function doLogin(){
     return;
   }
   role=acc.role; currentLoginId=id;
+  try{ sessionStorage.setItem('d0login',JSON.stringify({id,pass})); }catch(e){}
   if(role==='player') state.currentPlayer=acc.character||null;
   msg.style.color='var(--term)';
   const loginName=acc.label||(acc.character&&state.characters[acc.character]?state.characters[acc.character].short:'PLAYER');
@@ -405,10 +410,21 @@ function doLogin(){
   setTimeout(()=>{ goto('session'); updateUserBadge(); },450);
 }
 function doLogout(){
+  try{ sessionStorage.removeItem('d0login'); }catch(e){}
   role=null; state.currentPlayer=null; (function(){const b=document.getElementById('log-list'); if(b) b.innerHTML='';})(); document.getElementById('emp-id').value=''; document.getElementById('emp-pass').value=''; 
   document.getElementById('login-msg').textContent='';
   goto('login');
 }
+// depois de F5, entra de novo sozinho (só nesta aba) assim que os dados do servidor chegam
+function autoLogin(){
+  if(role) return;
+  let sv=null; try{ sv=JSON.parse(sessionStorage.getItem('d0login')||'null'); }catch(e){}
+  if(!sv) return;
+  document.getElementById('emp-id').value=sv.id; document.getElementById('emp-pass').value=sv.pass;
+  doLogin();
+  if(!role){ try{ sessionStorage.removeItem('d0login'); }catch(e){} document.getElementById('login-msg').textContent=''; }
+}
+window.addEventListener('load',()=>{ if(!window.ONLINE_ON) autoLogin(); });
 function updateUserBadge(){
   const el=document.getElementById('user-badge-text');
   if(role==='gm'){ el.textContent='OLÁ LELIS!'; }
@@ -418,6 +434,7 @@ function updateUserBadge(){
   const tb=document.getElementById('turn-btns'); if(tb) tb.style.display= role==='gm'?'':'none';
   const mv=document.getElementById('music-vol-player'); if(mv) mv.classList.toggle('hidden',role!=='player');
   music.audio.volume=musicEffVol();
+  renderTimer();
   msgComposerUpdate();
   renderLog();
   if(roomsRole!==role){ roomsRole=role; renderRooms(); }
@@ -441,16 +458,31 @@ function updateUserBadge(){
 function tickClock(){document.getElementById('intro-clock').textContent=new Date().toLocaleString('pt-BR');}
 setInterval(tickClock,1000); tickClock();
 
-let timerInt=null;
+let timerOffset=0; // diferença relógio local x servidor (online.js preenche)
 function fmtTimer(s){const h=String(Math.floor(s/3600)).padStart(2,'0');const m=String(Math.floor(s%3600/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return h+':'+m+':'+sec;}
-function renderTimer(){document.getElementById('timer-display').textContent=fmtTimer(state.timerSec);}
-function toggleTimer(){
-  state.timerRunning=!state.timerRunning;
-  document.getElementById('timer-btn').textContent=state.timerRunning?'PAUSAR':'INICIAR';
-  if(state.timerRunning){timerInt=setInterval(()=>{state.timerSec++;renderTimer();},1000);}
-  else clearInterval(timerInt);
+// tempo = segundos acumulados + (agora - início) quando está rodando. Todos calculam o mesmo valor.
+function timerNow(){
+  let s=+state.timerSec||0;
+  if(state.timerRunning && state.timerAt) s+=Math.max(0,Math.floor((Date.now()+timerOffset-state.timerAt)/1000));
+  return s;
 }
-function resetTimer(){state.timerSec=0;state.timerRunning=false;clearInterval(timerInt);document.getElementById('timer-btn').textContent='INICIAR';renderTimer();}
+function renderTimer(){
+  const d=document.getElementById('timer-display'); if(d) d.textContent=fmtTimer(timerNow());
+  const b=document.getElementById('timer-btn'); if(b) b.textContent=state.timerRunning?'PAUSAR':'INICIAR';
+  const gm=role==='gm';
+  ['timer-btn','timer-reset'].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display=gm?'':'none'; });
+}
+function toggleTimer(){
+  if(role!=='gm') return;
+  if(state.timerRunning){ state.timerSec=timerNow(); state.timerRunning=false; state.timerAt=0; }
+  else { state.timerAt=Date.now()+timerOffset; state.timerRunning=true; }
+  renderTimer();
+}
+function resetTimer(){
+  if(role!=='gm') return;
+  state.timerSec=0; state.timerRunning=false; state.timerAt=0; renderTimer();
+}
+setInterval(renderTimer,500);
 
 function allCombatants(){return [...Object.entries(state.characters).map(([id,c])=>({id,...c,kind:'pc'})),...Object.entries(state.enemies).map(([id,c])=>({id,...c,kind:'enemy'})),...Object.entries(state.npcs).map(([id,c])=>({id,...c,kind:'npc'}))];}
 
@@ -490,7 +522,7 @@ function renderParticipants(){
         <div class="bar hp"><i style="width:${100*c.hp/c.maxHp}%"></i></div>
         <div class="stat-line"><span>HP ${c.hp}/${c.maxHp}</span><span>SP ${c.sp}/${c.maxSp}</span></div>
         <div class="bar sp"><i style="width:${100*c.sp/c.maxSp}%"></i></div>
-        <div style="margin-top:4px">${c.status.map(s=>`<span class="status-tag">${s}</span>`).join('')}</div>`}));
+        <div style="margin-top:4px">${(c.status||[]).map(s=>`<span class="status-tag">${s}</span>`).join('')}</div>`}));
   });
 }
 function renderEnemiesList(){
@@ -520,22 +552,36 @@ function renderNpcsList(){
 }
 
 function renderTokens(){
-  const wrap=document.getElementById('map-wrap');
-  wrap.querySelectorAll('.token').forEach(t=>t.remove());
+  const wrap=document.getElementById('map-wrap'); if(!wrap) return;
+  const old=new Map();
+  wrap.querySelectorAll('.token').forEach(t=>old.set(t.dataset.kind+':'+t.dataset.id,t));
   allCombatants().forEach(c=>{
-    const t=document.createElement('div');
+    const key=c.kind+':'+c.id;
+    let t=old.get(key); old.delete(key);
     const hasHp=typeof c.maxHp==='number';
-    t.className='token'+(c.kind==='enemy'?' enemy':'')+(c.kind==='npc'?' npc':'')+(hasHp&&c.hp<=0?' downed':'');
-    t.style.left=c.x+'%'; t.style.top=c.y+'%';
-    t.dataset.id=c.id; t.dataset.kind=c.kind;
-    const avatarOrLetter = c.avatar? `<img class="token-avatar" src="${c.avatar}">` : (hasHp&&c.hp<=0?'✕':(c.short||'?')[0]);
-    const dmgHtml = hasHp? `<div class="dmg" data-dmg></div>` : '';
-    const hpHtml = hasHp? `<div class="hp-mini"><i style="width:${100*c.hp/c.maxHp}%"></i></div>` : '';
-    t.innerHTML=`${avatarOrLetter}${dmgHtml}${hpHtml}`;
-    t.onclick=(e)=>{ if(!t.dragging) openSheet(c.id); };
-    t.addEventListener('pointerdown',startDrag);
-    wrap.appendChild(t);
+    if(!t){
+      t=document.createElement('div');
+      t.dataset.id=c.id; t.dataset.kind=c.kind;
+      t.onclick=()=>{ if(!t.dragging) openSheet(t.dataset.id); };
+      t.addEventListener('pointerdown',startDrag);
+      wrap.appendChild(t);
+    }
+    t.className='token'+(c.kind==='enemy'?' enemy':'')+(c.kind==='npc'?' npc':'')+(hasHp&&c.hp<=0?' downed':'')+(t===dragTok?' dragging-now':'');
+    // só mexe no conteúdo (e recarrega a imagem) se algo visível mudou
+    const sig=[c.avatar||'',c.short||'',hasHp?c.hp+'/'+c.maxHp:'-'].join('|');
+    if(t._sig!==sig){
+      t._sig=sig;
+      const avatarOrLetter = c.avatar? `<img class="token-avatar" src="${c.avatar}">` : (hasHp&&c.hp<=0?'✕':(c.short||'?')[0]);
+      const dmgHtml = hasHp? `<div class="dmg" data-dmg></div>` : '';
+      const hpHtml = hasHp? `<div class="hp-mini"><i style="width:${100*c.hp/c.maxHp}%"></i></div>` : '';
+      t.innerHTML=`${avatarOrLetter}${dmgHtml}${hpHtml}`;
+    }
+    if(t!==dragTok){
+      t.style.left=(typeof c.x==='number'?c.x:50)+'%';
+      t.style.top=(typeof c.y==='number'?c.y:50)+'%';
+    }
   });
+  old.forEach(t=>t.remove());
   updateTokenVisibility();
 }
 let dragTok=null,dragWrap=null;
@@ -544,22 +590,31 @@ function startDrag(e){
   if(role==='player' && !(kind==='pc' && id===state.currentPlayer)) return;
   e.stopPropagation();
   dragTok=e.currentTarget; dragTok.dragging=false; dragWrap=document.getElementById('map-wrap');
+  dragTok.classList.add('dragging-now');
   dragTok.setPointerCapture(e.pointerId);
   dragTok.addEventListener('pointermove',onDrag);
   dragTok.addEventListener('pointerup',endDrag);
+  dragTok.addEventListener('pointercancel',endDrag);
 }
 function onDrag(e){
   if(!dragTok) return; dragTok.dragging=true;
   const r=dragWrap.getBoundingClientRect();
   let x=(e.clientX-r.left)/r.width*100, y=(e.clientY-r.top)/r.height*100;
-  x=Math.max(2,Math.min(98,x)); y=Math.max(4,Math.min(96,y));
+  x=Math.round(Math.max(2,Math.min(98,x))*100)/100; y=Math.round(Math.max(4,Math.min(96,y))*100)/100;
   dragTok.style.left=x+'%'; dragTok.style.top=y+'%';
   const id=dragTok.dataset.id, kind=dragTok.dataset.kind;
-  const obj= kind==='pc'? state.characters[id]:state.enemies[id];
+  const obj= kind==='pc'? state.characters[id] : kind==='npc'? state.npcs[id] : state.enemies[id];
+  if(!obj) return;
   obj.x=x; obj.y=y;
   if(state.fogLevel>0 && state.fogCfg.vision) renderFog();
 }
-function endDrag(e){ if(dragTok){dragTok.removeEventListener('pointermove',onDrag);dragTok.removeEventListener('pointerup',endDrag); setTimeout(()=>dragTok.dragging=false,50); dragTok=null;} }
+function endDrag(e){
+  const t=dragTok; if(!t) return;
+  t.removeEventListener('pointermove',onDrag); t.removeEventListener('pointerup',endDrag); t.removeEventListener('pointercancel',endDrag);
+  t.classList.remove('dragging-now');
+  dragTok=null;
+  setTimeout(()=>{ t.dragging=false; },50);
+}
 
 function toggleGrid(){
   state.grid=!state.grid;
@@ -2070,7 +2125,7 @@ tr.turn td{color:#6a6555;font-style:italic}
 <h1>DEPARTMENT 0 — RELATÓRIO DA PARTIDA</h1>
 <div class="sub">${E(state.chapter)} · ${E(state.location)} · gerado em ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR',{hour12:false})}</div>
 <div class="kpis">
-<div class="kpi"><b>${fmtTimer(state.timerSec)}</b><span>TEMPO NO TIMER</span></div>
+<div class="kpi"><b>${fmtTimer(timerNow())}</b><span>TEMPO NO TIMER</span></div>
 <div class="kpi"><b>${maxRound}</b><span>RODADAS DE COMBATE</span></div>
 <div class="kpi"><b>${combat.filter(l=>l.cat==='skill').length}</b><span>AÇÕES / HABILIDADES</span></div>
 <div class="kpi"><b>${totalDmg}</b><span>DANO TOTAL</span></div>
@@ -2457,7 +2512,9 @@ function imgDownscale(file,max,cb){
   r.onload=()=>{ const im=new Image();
     im.onload=()=>{ const k=Math.min(1,max/Math.max(im.width,im.height)), c=document.createElement('canvas');
       c.width=Math.round(im.width*k); c.height=Math.round(im.height*k); c.getContext('2d').drawImage(im,0,0,c.width,c.height);
-      cb(c.toDataURL(file.type==='image/png'?'image/png':'image/jpeg',.85)); };
+      let out=c.toDataURL(file.type==='image/png'?'image/png':'image/jpeg',.85);
+      if(out.length>1500000) out=c.toDataURL('image/jpeg',.8); // PNG gigante vira JPEG
+      cb(out); };
     im.onerror=()=>alert('Não consegui ler essa imagem.'); im.src=r.result; };
   r.readAsDataURL(file);
 }
@@ -2510,7 +2567,7 @@ const AUTOSAVE_KEY='dept0_autosave';
 function campaignDump(){ const c=Object.assign({},state); delete c.setups; return JSON.stringify({v:1,savedAt:Date.now(),state:c}); }
 function campaignLoad(txt){
   const o=JSON.parse(txt); if(!o||!o.state) throw 0;
-  Object.assign(state,o.state); state.timerRunning=false;
+  Object.assign(state,o.state); state.timerRunning=false; state.timerAt=0;
   const img=document.getElementById('map-bg-img');
   if(img){ if(state.mapBackground){ img.src=state.mapBackground; img.classList.remove('hidden'); } else img.classList.add('hidden'); }
   renderAll(); addLog('Campanha restaurada.');
@@ -2591,8 +2648,8 @@ function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.dr
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2"></script>
-<script src="online.js?v=2"></script>
+<script src="firebase-config.js?v=3"></script>
+<script src="online.js?v=3"></script>
 </body>
 </html>
 
