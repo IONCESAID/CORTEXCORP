@@ -8,6 +8,49 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=4">
+<style id="d0-improvements">
+/* Melhorias de navegação, mobile e ações rápidas */
+.map-toolbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.map-menu{position:relative;display:inline-flex;align-items:center}
+.map-menu>summary{list-style:none;cursor:pointer;user-select:none;padding:6px 9px;border:1px solid var(--line);background:var(--panel2);color:var(--white);font:inherit;font-size:.68rem}
+.map-menu>summary::-webkit-details-marker{display:none}
+.map-menu[open]{z-index:80}
+.map-menu .menu-pop{position:absolute;top:calc(100% + 4px);left:0;min-width:190px;max-width:min(82vw,300px);padding:7px;background:var(--panel,#111);border:1px solid var(--line);box-shadow:0 10px 28px #000b;display:flex;flex-direction:column;gap:5px;z-index:999}
+.map-menu .menu-pop button{width:100%;text-align:left;white-space:normal}
+.token-action-menu{position:fixed;z-index:10050;background:#101014;border:1px solid #8d1b25;box-shadow:0 12px 32px #000c;padding:8px;min-width:165px;display:grid;gap:5px;color:#fff;font:12px 'JetBrains Mono',monospace}
+.token-action-menu strong{color:#ef5360;padding:3px 4px}
+.token-action-menu button{background:#1a1a20;color:#eee;border:1px solid #45454e;padding:8px;text-align:left;cursor:pointer}
+.token-action-menu button:hover{border-color:#e23b49}
+#mobile-sheet-handle{display:none}
+@media(max-width:760px){
+ #screen-session{height:100dvh;overflow:hidden}
+ .topbar{padding:6px;gap:6px;flex-wrap:wrap}
+ .brand-logo{max-width:120px;max-height:42px;object-fit:contain}
+ .timer-wrap{gap:5px;flex-wrap:wrap}
+ .timer-wrap .role-toggle{display:none}
+ .timer-wrap #timer-reset,.timer-wrap #btn-gm-control,.timer-wrap #btn-board{display:none!important}
+ .main-grid{display:block!important;height:calc(100dvh - 76px);min-height:0}
+ .map-col{height:100%;min-height:0;display:flex;flex-direction:column}
+ .map-toolbar{flex:0 0 auto;max-height:90px;overflow:auto;align-content:flex-start;padding:5px;gap:4px}
+ .map-toolbar>.btn{padding:5px 7px;font-size:10px}
+ .map-viewport{flex:1;min-height:0;height:auto!important;touch-action:pan-x pan-y}
+ .sidebar{position:fixed!important;z-index:1000;left:0;right:0;bottom:0;top:auto!important;width:100%!important;max-height:68dvh;overflow:auto;transform:translateY(calc(100% - 42px));transition:transform .22s ease;border-radius:16px 16px 0 0;padding:14px 12px calc(18px + env(safe-area-inset-bottom))!important;background:var(--panel,#101014);box-shadow:0 -8px 30px #0009}
+ .sidebar:before{content:'FICHAS E ALIADOS — toque para abrir';display:block;text-align:center;color:var(--gray);font-size:11px;padding:0 0 12px;cursor:pointer}
+ .sidebar.open{transform:translateY(0)}
+ .sidebar .panel-block{margin-bottom:10px}
+ .sidebar .panel-block h3{font-size:12px}
+ .footer-bar{position:fixed!important;left:0;right:0;bottom:0;z-index:900;max-height:38dvh;overflow:auto;pointer-events:none}
+ .footer-bar>*{pointer-events:auto}
+ .turn-col{max-height:35dvh;overflow:auto}
+ .log-col:not(.expanded){max-height:40px;overflow:hidden}
+ .sheet-card{width:100vw!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important;overflow:auto}
+ .sheet-dossier{display:block!important}
+ .dossier-left{display:none!important}
+ .dossier-right{min-width:0}
+ .ov-head{position:sticky;top:0;z-index:2;background:var(--panel,#101014)}
+ #btn-mobile-side{display:inline-flex!important}
+}
+</style>
 </head>
 <body>
 <div id="app">
@@ -2320,16 +2363,19 @@ function musicAdd(){
   let name=(g('mus-name').value||'').trim(); const tags=musicParseTags(g('mus-tags').value);
   const editing=music.editId?state.tracks.find(t=>t.id===music.editId):null;
   if(!editing && !file && !url){ alert('Escolha um arquivo de áudio ou cole um link direto.'); return; }
-  if(!name) name= file? file.name.replace(/\.[^.]+$/,'') : (editing? editing.name : url.split('/').pop()||'FAIXA');
-  let src=null,blob=false;
-  if(file){ src=URL.createObjectURL(file); blob=true; } else if(url){ src=url; }
-  if(editing){
-    editing.name=name; editing.tags=tags;
-    if(src){ if(editing.blob) URL.revokeObjectURL(editing.src); editing.src=src; editing.blob=blob; if(music.currentId===editing.id) musicPlay(editing.id); }
-    music.editId=null;
-  } else state.tracks.push({id:'t'+Date.now()+Math.random().toString(36).slice(2,5),name,tags,src,blob});
+  if(!name) name=file?file.name.replace(/\.[^.]+$/,''):(editing?editing.name:url.split('/').pop()||'FAIXA');
+  if(file){
+    if(file.size>MUS_MAX){alert('O limite por faixa é 6 MB para sincronizar com todos. Comprima o áudio em MP3 ou use um link direto.');return;}
+    const reader=new FileReader();
+    reader.onload=()=>{const src=reader.result; if(editing){editing.name=name;editing.tags=tags;editing.src=src;editing.blob=false;if(music.currentId===editing.id)musicPlay(editing.id);music.editId=null;}else state.tracks.push({id:'t'+Date.now()+Math.random().toString(36).slice(2,5),name,tags,src,blob:false});gmRenderMusic();};
+    reader.onerror=()=>alert('Não foi possível ler esse arquivo de áudio.');reader.readAsDataURL(file);return;
+  }
+  const src=url||null;
+  if(editing){editing.name=name;editing.tags=tags;if(src){editing.src=src;editing.blob=false;if(music.currentId===editing.id)musicPlay(editing.id);}music.editId=null;}
+  else state.tracks.push({id:'t'+Date.now()+Math.random().toString(36).slice(2,5),name,tags,src,blob:false});
   gmRenderMusic();
 }
+
 function musicEdit(id){ music.editId=id; gmRenderMusic(); }
 function musicCancelEdit(){ music.editId=null; gmRenderMusic(); }
 function musicDelete(id){
@@ -2720,6 +2766,35 @@ function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.dr
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="firebase-config.js?v=4"></script>
 <script src="online.js?v=4"></script>
+<script id="d0-improvements-js">
+(function(){
+  // Ações diretas no token para o mestre; players continuam abrindo a própria ficha.
+  let actionMenu=null;
+  function closeActionMenu(){if(actionMenu){actionMenu.remove();actionMenu=null;}}
+  window.addEventListener('click',e=>{if(actionMenu&&!actionMenu.contains(e.target)&&!e.target.closest('.token'))closeActionMenu();});
+  const oldRenderTokens=renderTokens;
+  renderTokens=function(){oldRenderTokens();document.querySelectorAll('#map-wrap .token').forEach(t=>{if(t.dataset.quickBound)return;t.dataset.quickBound='1';t.addEventListener('contextmenu',e=>{if(role!=='gm')return;e.preventDefault();e.stopPropagation();closeActionMenu();const id=t.dataset.id,c=findObj(id);if(!c)return;actionMenu=document.createElement('div');actionMenu.className='token-action-menu';actionMenu.style.left=Math.min(e.clientX,innerWidth-190)+'px';actionMenu.style.top=Math.min(e.clientY,innerHeight-210)+'px';actionMenu.innerHTML=`<strong>${String(c.short||'TOKEN').replace(/[<>]/g,'')}</strong><button data-a="dmg">⚔ Aplicar dano</button><button data-a="heal">✚ Curar</button><button data-a="status">◈ Adicionar status</button><button data-a="sheet">Abrir ficha</button><button data-a="close">Fechar</button>`;document.body.appendChild(actionMenu);actionMenu.querySelectorAll('button').forEach(b=>b.onclick=()=>{const a=b.dataset.a;closeActionMenu();if(a==='dmg'||a==='heal'){const raw=prompt(a==='dmg'?'Quanto dano aplicar?':'Quanto HP restaurar?','10');if(raw===null)return;const n=Math.max(0,parseInt(raw,10)||0);if(n)applyDelta(id,a==='dmg'?-n:n);}else if(a==='status'){const st=prompt('Nome do status:');if(st&&st.trim())addStatus(id,st.trim().toUpperCase());}else if(a==='sheet')openSheet(id);});});});};
+  // Atalho N/→ para próximo turno; P/← para anterior; espaço controla timer apenas quando não se está digitando.
+  document.addEventListener('keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey)return;const a=document.activeElement;if(a&&(/INPUT|TEXTAREA|SELECT/.test(a.tagName)||a.isContentEditable))return;if(!document.getElementById('screen-session')?.classList.contains('active'))return;if(e.key==='n'||e.key==='N'||e.key==='ArrowRight'){if(role==='gm'){e.preventDefault();nextTurn();}}else if(e.key==='p'||e.key==='P'||e.key==='ArrowLeft'){if(role==='gm'){e.preventDefault();prevTurn();}}else if(e.code==='Space'&&role==='gm'){e.preventDefault();toggleTimer();}});
+  // Organiza comandos em menus para reduzir a poluição visual; controles essenciais ficam acessíveis.
+  function groupToolbar(){const bar=document.querySelector('.map-toolbar');if(!bar||bar.dataset.grouped)return;bar.dataset.grouped='1';const groups=[
+    {name:'MAPA ▾',ids:['btn-grid','btn-freveal','btn-fhide','btn-rooms']},
+    {name:'MÍDIA ▾',ids:['btn-music']},
+    {name:'MESTRE ▾',ids:['btn-report']}
+  ];groups.forEach(g=>{const nodes=g.ids.map(id=>document.getElementById(id)).filter(Boolean);if(!nodes.length)return;const d=document.createElement('details');d.className='map-menu';const sum=document.createElement('summary');sum.textContent=g.name;const pop=document.createElement('div');pop.className='menu-pop';nodes.forEach(n=>{n.parentNode&&n.parentNode.removeChild(n);pop.appendChild(n);});d.append(sum,pop);bar.insertBefore(d,bar.firstChild);});}
+  // A gaveta de fichas abre ao tocar no puxador/área da barra lateral.
+  function setupDrawer(){const side=document.getElementById('sidebar');if(!side||side.dataset.drawer)return;side.dataset.drawer='1';side.addEventListener('click',e=>{if(e.target===side||e.target.matches(':before'))side.classList.toggle('open');});const h=side.querySelector('h3');if(h)h.addEventListener('click',()=>side.classList.toggle('open'));}
+  // Menos ruído: painel de histórico pode ser retraído e mensagens mantêm um único compositor por vez.
+  const oldSendMsg=window.sendMsg;window.sendMsg=function(){oldSendMsg();const t=document.getElementById('msg-text');if(t)t.value='';};
+  const oldSendWhisper=window.sendWhisper;window.sendWhisper=function(){oldSendWhisper();const t=document.getElementById('wh-text');if(t)t.value='';};
+  // Persistência local continua como fallback; online.js também sincroniza setups pelo Firebase.
+  const oldPersist=window.persistSetups;window.persistSetups=function(){try{localStorage.setItem('dept0_setups',JSON.stringify(state.setups));}catch(e){}if(window.ONLINE_ON&&window.ONLINE_READY)window.dispatchEvent(new CustomEvent('d0:setups-changed',{detail:state.setups}));};
+  const oldLoad=window.loadSetups;window.loadSetups=function(){oldLoad();if(window.ONLINE_ON&&Array.isArray(state.setups)&&state.setups.length)window.dispatchEvent(new CustomEvent('d0:setups-changed',{detail:state.setups}));};
+  function boot(){groupToolbar();setupDrawer();const side=document.getElementById('sidebar');if(side){const b=document.getElementById('btn-mobile-side');if(b)b.textContent='☰ FICHAS';} }
+  document.addEventListener('DOMContentLoaded',boot);setTimeout(boot,100);setTimeout(boot,700);
+})();
+</script>
+
 </body>
 </html>
 

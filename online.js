@@ -15,7 +15,7 @@
   const ref = db.ref(raiz + '/d');
   const imgRef = db.ref(raiz + '/img');
 
-  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','timerSec','timerRunning','timerAt'];
+  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','timerSec','timerRunning','timerAt','setups','activeSetup','tracks'];
   const MAX_LOG = 200;
   const INTERVALO = 250;           // ms entre envios
   const contasDoCodigo = {};
@@ -204,6 +204,12 @@
   }
   badge.textContent = 'conectando...'; badge.style.color = '#aaa';
 
+  // Setups de cena e biblioteca de faixas ficam na sala Firebase, não só no navegador do mestre.
+  window.addEventListener('d0:setups-changed', e => {
+    if(!e.detail || !Array.isArray(e.detail)) return;
+    state.setups = e.detail;
+    if(typeof state.activeSetup === 'undefined') state.activeSetup = null;
+  });
   db.ref('.info/connected').on('value', s => { conectado = !!s.val(); status(); });
   // relógio do servidor: o timer fica igual para todos, mesmo com relógios de PC diferentes
   db.ref('.info/serverTimeOffset').on('value', s => { timerOffset = +s.val() || 0; });
