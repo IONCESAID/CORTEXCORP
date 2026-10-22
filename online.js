@@ -15,7 +15,7 @@
   const ref = db.ref(raiz + '/d');
   const imgRef = db.ref(raiz + '/img');
 
-  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','timerSec','timerRunning','timerAt'];
+  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','sceneEffect','mapPing','timerSec','timerRunning','timerAt'];
   const MAX_LOG = 200;
   const INTERVALO = 250;           // ms entre envios
   const contasDoCodigo = {};
@@ -122,7 +122,7 @@
 
   const AREA = { chapter:'chap', location:'chap', turnOrder:'turno', turn:'turno', round:'turno', turnSlots:'turno',
     grid:'grid', fogLevel:'fog', fogCfg:'fog', rooms:'salas', mapBackground:'mapa', mapImages:'imgs', spotlight:'imgs',
-    drawings:'draw', musicNow:'music' };
+    drawings:'draw', musicNow:'music', sceneEffect:'scene', mapPing:'scene' };
 
   function aplicar(k, v){
     const p = k.split('|').map(decodeURIComponent), N = state.notes;
@@ -282,6 +282,7 @@
     passo('fog', () => { renderFog(); updateFogButtons(); });
     passo('chap', () => { document.getElementById('chap-label').textContent = state.chapter + ' · ' + state.location; });
     passo('imgs', () => renderMapImages());
+    passo('scene', () => { if(typeof renderSceneEffect === 'function') renderSceneEffect(); if(typeof renderMapPing === 'function') renderMapPing(); });
     passo('music', () => { if(typeof musicApply === 'function') musicApply(); });
     passo('draw', () => { if(typeof drawing !== 'undefined' && drawing) return 'adiar'; renderDraw(); });
 
@@ -319,7 +320,7 @@
   goto = function(id){
     gotoOriginal(id);
     if(id === 'session'){
-      ['mapa','grid','salas','fog','chap','imgs','draw','music','chars','turno','log','notas'].forEach(x => sujo[x] = true);
+      ['mapa','grid','salas','fog','chap','imgs','draw','music','scene','chars','turno','log','notas'].forEach(x => sujo[x] = true);
       setTimeout(desenhar, 0);
     }
   };
@@ -336,7 +337,7 @@
   ref.once('value').then(snap => {
     const tudo = snap.val() || {};
     Object.keys(tudo).forEach(k => { last[k] = tudo[k]; processar(k, tudo[k]); });
-    ['mapa','grid','salas','fog','chap','imgs','draw','music','chars','turno','log','notas'].forEach(x => sujo[x] = true);
+    ['mapa','grid','salas','fog','chap','imgs','draw','music','scene','chars','turno','log','notas'].forEach(x => sujo[x] = true);
     pronto = true;
     window.ONLINE_READY = true;
     recebidoEm = hora();
