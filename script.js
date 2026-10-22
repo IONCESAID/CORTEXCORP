@@ -39,7 +39,7 @@ function goto(id){
 }
 
 const ACCOUNTS={
-  '1':{password:'1', role:'gm', label:'GAME MASTER'},
+  'LL1':{password:'301217', role:'gm', label:'GAME MASTER'},
   '2':{password:'2', role:'player'}
 };
 function doLogin(){
