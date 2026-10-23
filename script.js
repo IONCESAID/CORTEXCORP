@@ -26,7 +26,7 @@ const state={
   currentPlayer:null,
   customActions:[],
   mapImages:[],
-  sceneEffect:'none', mapPing:null,
+  sceneEffect:'none', library:{enemies:[],npcs:[]},
   spotlight:null,
 };
 let enemyCounter=0, npcCounter=0;
@@ -154,7 +154,7 @@ setInterval(renderTimer,500);
 function allCombatants(){return [...Object.entries(state.characters).map(([id,c])=>({id,...c,kind:'pc'})),...Object.entries(state.enemies).map(([id,c])=>({id,...c,kind:'enemy'})),...Object.entries(state.npcs).map(([id,c])=>({id,...c,kind:'npc'}))];}
 
 function renderAll(){
-  renderParticipants(); renderEnemiesList(); renderNpcsList(); renderTokens(); renderMapImages(); renderLog(); renderTurns(); renderTimer(); updateUserBadge(); renderSceneEffect(); renderMapPing();
+  renderParticipants(); renderEnemiesList(); renderNpcsList(); renderTokens(); renderMapImages(); renderLog(); renderTurns(); renderTimer(); updateUserBadge(); renderSceneEffect();
   document.getElementById('chap-label').textContent=state.chapter+' · '+state.location;
 }
 
@@ -391,11 +391,11 @@ function mapWheelZoom(e){ e.preventDefault(); zoomMap(e.deltaY<0? 0.1 : -0.1); }
   vp.addEventListener('wheel',mapWheelZoom,{passive:false});
 })();
 
-function toggleLog(){
-  const col=document.getElementById('log-col');
-  const collapsed=col.classList.toggle('collapsed');
-  document.getElementById('log-toggle-btn').textContent= collapsed? '▲ EXPANDIR':'▼ RETRAIR';
+function setFooterCollapsed(c){
+  ['log-col','comms-col'].forEach(id=>{ const e=document.getElementById(id); if(e) e.classList.toggle('collapsed',c); });
+  ['log-toggle-btn','comms-toggle-btn'].forEach(id=>{ const b=document.getElementById(id); if(b) b.textContent=c?'▲ EXPANDIR':'▼ RETRAIR'; });
 }
+function toggleLog(){ setFooterCollapsed(!document.getElementById('log-col').classList.contains('collapsed')); }
 function toggleTurnPanel(){
   const col=document.getElementById('turn-col');
   const collapsed=col.classList.toggle('collapsed');
@@ -440,14 +440,10 @@ function pushMsg(l){
 }
 function logNotify(){
   const col=document.getElementById('comms-col'); if(!col) return;
-  if(col.classList.contains('collapsed')) toggleComms();
+  if(col.classList.contains('collapsed')) setFooterCollapsed(false);
   col.classList.remove('flash'); void col.offsetWidth; col.classList.add('flash');
 }
-function toggleComms(){
-  const col=document.getElementById('comms-col');
-  const c=col.classList.toggle('collapsed');
-  document.getElementById('comms-toggle-btn').textContent=c?'▲ EXPANDIR':'▼ RETRAIR';
-}
+function toggleComms(){ toggleLog(); }
 function sendMsg(){
   if(role!=='gm') return;
   const ta=document.getElementById('msg-text'); const text=ta.value.trim(); if(!text) return;
@@ -696,7 +692,7 @@ function renderTokenMenu(tok){
   const m=document.createElement('div'); m.id='token-menu';
   m.innerHTML=`<div class="tm-head"><b>${escHtml(c.short||c.name)}</b>${hasHp?`<span>${c.hp}/${c.maxHp} HP</span>`:''}<i class="tm-x" onclick="closeTokenMenu()">✕</i></div>`
     +(hasHp?hpQuickHtml(tmId,'tm'):'')
-    +`<div class="tm-row"><button class="btn small ghost" onclick="openSheet('${tmId}');closeTokenMenu()">FICHA</button>${state.turnOrder.includes(tmId)?`<button class="btn small ghost" onclick="tmFocusTurn()">DAR O TURNO</button>`:''}</div>`;
+    +`<div class="tm-row"><button class="btn small ghost" onclick="openSheet('${tmId}');closeTokenMenu()">FICHA</button>${state.enemies[tmId]?`<button class="btn small ghost" onclick="libSave('enemies','${tmId}')">💾 SALVAR</button>`:state.npcs[tmId]?`<button class="btn small ghost" onclick="libSave('npcs','${tmId}')">💾 SALVAR</button>`:''}${state.turnOrder.includes(tmId)?`<button class="btn small ghost" onclick="tmFocusTurn()">DAR O TURNO</button>`:''}</div>`;
   document.body.appendChild(m);
   const r=tok.getBoundingClientRect(), w=m.offsetWidth, h=m.offsetHeight;
   m.style.left=Math.max(6,Math.min(innerWidth-w-6,r.left+r.width/2-w/2))+'px';
@@ -1360,6 +1356,61 @@ function gmCreateCharacter(){
 }
 
 function gmApply(id){const v=parseInt(document.getElementById('dmg-'+id).value||'0',10); if(!v)return; applyDelta(id,v); document.getElementById('dmg-'+id).value='';}
+
+// ---------- BIBLIOTECA DE NPCS E CRIATURAS (guardada no navegador e no Firebase, só o mestre vê) ----------
+function persistLibrary(){
+  try{ localStorage.setItem('dept0_library',JSON.stringify(state.library)); }
+  catch(e){ if(!persistLibrary.warned){ persistLibrary.warned=true; alert('Não deu pra guardar a biblioteca neste navegador (espaço cheio). Ela continua sendo enviada ao Firebase.'); } }
+}
+function loadLibrary(){
+  try{ const j=localStorage.getItem('dept0_library'); if(j){ const o=JSON.parse(j); if(o&&typeof o==='object') state.library={enemies:o.enemies||[],npcs:o.npcs||[]}; } }catch(e){}
+}
+function gmToast(msg){
+  let t=document.getElementById('gm-toast');
+  if(!t){ t=document.createElement('div'); t.id='gm-toast'; t.className='gm-toast'; document.body.appendChild(t); }
+  t.textContent=msg; t.classList.add('show'); clearTimeout(gmToast._t); gmToast._t=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function libSave(kind,id,quiet){
+  const src=(kind==='enemies'?state.enemies:state.npcs)[id]; if(!src) return;
+  const e=JSON.parse(JSON.stringify(src));
+  delete e.x; delete e.y; delete e.id;
+  if(kind==='enemies'){ e.hp=e.maxHp; e.sp=e.maxSp; e.status=['NORMAL']; e.weaknessRevealed=false; }
+  const list=state.library[kind], i=list.findIndex(x=>(x.name||'')===(e.name||''));
+  if(i>=0){ e.lid=list[i].lid; list[i]=e; } else { e.lid='lib'+Date.now()+Math.random().toString(36).slice(2,5); list.push(e); }
+  persistLibrary(); libRefresh(kind);
+  if(!quiet) gmToast((i>=0?'Atualizado na biblioteca: ':'Salvo na biblioteca: ')+(e.short||e.name));
+}
+function libAdd(kind,lid){
+  const e=state.library[kind].find(x=>x.lid===lid); if(!e) return;
+  const c=JSON.parse(JSON.stringify(e)); delete c.lid;
+  const group=kind==='enemies'?state.enemies:state.npcs;
+  // repetidos viram "GOBLIN 2", "GOBLIN 3"...
+  const same=Object.values(group).filter(o=>o.short===e.short||String(o.short||'').startsWith(e.short+' ')).length;
+  if(same) c.short=e.short+' '+(same+1);
+  let id;
+  if(kind==='enemies'){ do{ enemyCounter++; id='enemy'+enemyCounter; }while(state.enemies[id]); c.x=60+Math.random()*20; c.y=40+Math.random()*20; }
+  else { do{ npcCounter++; id='npc_'+npcCounter; }while(state.npcs[id]); c.x=15+Math.random()*20; c.y=15+Math.random()*20; }
+  group[id]=c;
+  if(kind==='enemies') state.turnOrder.push(id);
+  addLog(kind==='enemies'?`GM invocou ${c.short} no mapa.`:`GM adicionou o NPC ${c.short} ao mapa.`);
+  renderAll();
+  if(kind==='enemies') gmRefreshEnemiesList(); else gmRefreshNpcsList();
+}
+function libRemove(kind,lid){
+  const e=state.library[kind].find(x=>x.lid===lid); if(!e) return;
+  if(!confirm('Excluir "'+(e.short||e.name)+'" da biblioteca? (o que já está no mapa não muda)')) return;
+  state.library[kind]=state.library[kind].filter(x=>x.lid!==lid);
+  persistLibrary(); libRefresh(kind);
+}
+function libRefresh(kind){
+  const box=document.getElementById('gm-lib-'+kind); if(!box) return;
+  const l=state.library[kind]||[];
+  if(!l.length){ box.innerHTML='<div style="font-size:.65rem;color:var(--gray)">— nada salvo ainda. Use 💾 SALVAR numa linha acima, ou marque "salvar também na biblioteca" ao criar. —</div>'; return; }
+  box.innerHTML=l.map(e=>`<div class="gm-char-row" style="flex-wrap:wrap">${e.avatar?`<img src="${escHtml(e.avatar)}" alt="" style="width:26px;height:26px;object-fit:cover;border:1px solid var(--line)">`:''}<span class="name">${escHtml(e.short||e.name)}</span>`
+    +`<span>${kind==='enemies'?'LV '+escHtml(e.level||'?')+' · HP '+escHtml(e.maxHp):escHtml(e.role||'—')}</span>`
+    +`<button class="btn small" onclick="libAdd('${kind}','${e.lid}')">ADICIONAR AO MAPA</button>`
+    +`<button class="btn small ghost" onclick="libRemove('${kind}','${e.lid}')">EXCLUIR</button></div>`).join('');
+}
 function gmRenderEnemies(){
   const pane=document.getElementById('gm-pane');
   pane.innerHTML=`<h4>CRIAR INIMIGO</h4>
@@ -1374,15 +1425,17 @@ function gmRenderEnemies(){
       <div class="form-row"><label>RESISTÊNCIA</label><input id="en-resist"></div>
       <div class="form-row"><label>DESCRIÇÃO</label><input id="en-desc"></div>
     </div>
+    <label class="lib-check"><input type="checkbox" id="en-save"> SALVAR TAMBÉM NA BIBLIOTECA</label>
     <button class="btn small" onclick="gmCreateEnemy()">ADICIONAR</button>
-    <h4 style="margin-top:16px">INIMIGOS ATIVOS</h4><div id="gm-enemies-list"></div>`;
+    <h4 style="margin-top:16px">INIMIGOS ATIVOS</h4><div id="gm-enemies-list"></div>
+    <h4 style="margin-top:16px">BIBLIOTECA — CRIATURAS SALVAS</h4><div id="gm-lib-enemies"></div>`;
   gmRefreshEnemiesList();
 }
 function gmCreateEnemy(){
   const fileInput=document.getElementById('en-avatar');
   const file=fileInput&&fileInput.files[0];
   const build=(avatar)=>{
-    enemyCounter++; const id='enemy'+enemyCounter;
+    let id; do{ enemyCounter++; id='enemy'+enemyCounter; }while(state.enemies[id]);
     const hp=parseInt(document.getElementById('en-hp').value||'30',10);
     state.enemies[id]={name:document.getElementById('en-name').value||'UNKNOWN ENEMY',short:(document.getElementById('en-name').value||'ENEMY').split(' ')[0].toUpperCase(),
       type:document.getElementById('en-type').value||'ENEMY', hp:hp, maxHp:hp, sp:parseInt(document.getElementById('en-sp').value||'10',10), maxSp:parseInt(document.getElementById('en-sp').value||'10',10), skills:[],
@@ -1391,6 +1444,7 @@ function gmCreateEnemy(){
       desc:document.getElementById('en-desc').value, status:['NORMAL'], x:60+Math.random()*20, y:40+Math.random()*20};
     state.turnOrder.push(id);
     addLog(`GM invocou ${state.enemies[id].short} no mapa.`);
+    const sv=document.getElementById('en-save'); if(sv&&sv.checked) libSave('enemies',id,true);
     renderAll(); gmRefreshEnemiesList();
   };
   if(file){ imgDownscale(file,256,build); }
@@ -1405,9 +1459,11 @@ function gmRefreshEnemiesList(){
     row.innerHTML=`<span class="name">${c.short}</span><span>LV ${c.level||'?'}</span>
       <label class="btn small ghost" style="cursor:pointer">FOTO<input type="file" accept="image/*" style="display:none" onchange="gmUploadEnemyAvatar('${id}',event)"></label>
       <button class="btn small ghost" onclick="openOverlay('board')">QUADRO</button>
+      <button class="btn small ghost" onclick="libSave('enemies','${id}')">💾 SALVAR</button>
       <button class="btn small ghost" onclick="gmDeleteEnemy('${id}')">EXCLUIR</button>`;
     box.appendChild(row);
   });
+  libRefresh('enemies');
 }
 function gmToggleWeakness(id){
   const c=state.enemies[id]; if(!c) return;
@@ -1427,8 +1483,10 @@ function gmRenderNpcs(){
     <div class="form-2col"><div class="form-row"><label>NOME</label><input id="npc-name"></div>
     <div class="form-row"><label>FUNÇÃO</label><input id="npc-role"></div></div>
     <div class="form-row"><label>DESCRIÇÃO</label><input id="npc-desc"></div>
+    <label class="lib-check"><input type="checkbox" id="npc-save"> SALVAR TAMBÉM NA BIBLIOTECA</label>
     <button class="btn small" onclick="gmCreateNpc()">ADICIONAR AO MAPA</button>
-    <h4 style="margin-top:16px">NPCS NO MAPA</h4><div id="gm-npcs-list"></div>`;
+    <h4 style="margin-top:16px">NPCS NO MAPA</h4><div id="gm-npcs-list"></div>
+    <h4 style="margin-top:16px">BIBLIOTECA — NPCS SALVOS</h4><div id="gm-lib-npcs"></div>`;
   gmRefreshNpcsList();
 }
 function gmCreateNpc(){
@@ -1437,10 +1495,11 @@ function gmCreateNpc(){
   const fileInput=document.getElementById('npc-avatar');
   const file=fileInput&&fileInput.files[0];
   const build=(avatar)=>{
-    npcCounter++; const id='npc_'+npcCounter;
+    let id; do{ npcCounter++; id='npc_'+npcCounter; }while(state.npcs[id]);
     state.npcs[id]={name:name.toUpperCase(), short:name.split(' ')[0].toUpperCase(), role:document.getElementById('npc-role').value||'—',
       desc:document.getElementById('npc-desc').value||'', avatar:avatar||null, x:15+Math.random()*20, y:15+Math.random()*20};
     addLog(`GM adicionou o NPC ${state.npcs[id].short} ao mapa.`);
+    const sv=document.getElementById('npc-save'); if(sv&&sv.checked) libSave('npcs',id,true);
     renderAll(); gmRefreshNpcsList();
   };
   if(file){ imgDownscale(file,256,build); }
@@ -1454,9 +1513,11 @@ function gmRefreshNpcsList(){
     const row=document.createElement('div'); row.className='gm-char-row';
     row.innerHTML=`<span class="name">${c.short}</span><span>${c.role||'—'}</span>
       <label class="btn small ghost" style="cursor:pointer">FOTO<input type="file" accept="image/*" style="display:none" onchange="gmUploadNpcAvatar('${id}',event)"></label>
+      <button class="btn small ghost" onclick="libSave('npcs','${id}')">💾 SALVAR</button>
       <button class="btn small ghost" onclick="gmDeleteNpc('${id}')">REMOVER</button>`;
     box.appendChild(row);
   });
+  libRefresh('npcs');
 }
 function gmUploadNpcAvatar(id,ev){
   const file=ev.target.files[0]; if(!file) return;
@@ -2317,7 +2378,11 @@ function renderMapImages(){
     wrap.appendChild(el);
   });
   const sp=state.spotlight;
-  if(sp && sp.ts!==dismissedSpot && (state.mapImages||[]).some(m=>m.id===sp.id)){ dismissedSpot=sp.ts; openMapImage(sp.id); }
+  if(sp && sp.ts!==dismissedSpot){
+    const age=Date.now()+timerOffset-(sp.ts||0);
+    dismissedSpot=sp.ts;                                   // cada pedido do mestre vale uma vez
+    if(age>=-3000 && age<=20000 && (state.mapImages||[]).some(m=>m.id===sp.id)) openMapImage(sp.id);   // pedido antigo (ex.: ao abrir o jogo) é ignorado
+  }
 }
 function openMapImage(id){
   const im=(state.mapImages||[]).find(m=>m.id===id); if(!im) return;
@@ -2406,13 +2471,16 @@ function gmAddImage(){
   if(url) add(url); else imgDownscale(f,1400,add);
 }
 function gmToggleImage(id){ const im=state.mapImages.find(m=>m.id===id); if(!im) return; im.shown=!im.shown; renderMapImages(); gmRenderImages(); }
-function gmSpotlight(id){ state.spotlight={id,ts:Date.now()}; renderMapImages(); }
+function gmSpotlight(id){
+  const ts=Date.now()+timerOffset; state.spotlight={id,ts}; renderMapImages();
+  setTimeout(()=>{ if(state.spotlight&&state.spotlight.ts===ts) state.spotlight=null; },30000);   // limpa do servidor: não reaparece depois
+}
 function gmRenameImage(id){ const im=state.mapImages.find(m=>m.id===id); if(!im) return; const n=prompt('Título da imagem:',im.title||''); if(n!==null){ im.title=n.trim(); renderMapImages(); gmRenderImages(); } }
 function gmDeleteImage(id){ const im=state.mapImages.find(m=>m.id===id); if(!im||!confirm('Remover esta imagem do mapa?')) return; state.mapImages=state.mapImages.filter(m=>m.id!==id); if(state.spotlight&&state.spotlight.id===id) state.spotlight=null; renderMapImages(); gmRenderImages(); }
 
 document.querySelectorAll('.sidebar .panel-block h3').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('collapsed')));
 
-renderNotes(); renderRooms(); loadSetups(); renderFog(); updateFogButtons();
+renderNotes(); renderRooms(); loadSetups(); loadLibrary(); renderFog(); updateFogButtons();
 
 (function initPinch(){
   const vp=document.getElementById('map-viewport'), pts=new Map(); let d0=0,z0=1;
@@ -2517,50 +2585,6 @@ function renderSceneEffect(){
   const select=document.getElementById('scene-effect');
   if(select && select.value!==effect) select.value=effect;
 }
-let pingArmed=false;
-function armMapPing(){
-  if(role!=='gm') return;
-  pingArmed=true;
-  const b=document.querySelector('#scene-tools button[onclick="armMapPing()"]');
-  if(b){b.textContent='CLIQUE NO MAPA…';b.classList.add('on-state');}
-}
-function clearMapPing(){
-  if(role!=='gm') return;
-  state.mapPing=null;
-  renderMapPing();
-}
-const PING_MS=8000;
-function renderMapPing(){
-  const layer=document.getElementById('map-ping-layer'); if(!layer) return;
-  clearTimeout(renderMapPing._t); clearTimeout(renderMapPing._o);
-  const p=state.mapPing, age=p?(Date.now()+timerOffset-(p.ts||0)):Infinity;
-  if(!p||age>PING_MS||age<-2000){ layer.innerHTML=''; return; }
-  const x=Math.max(0,Math.min(100,p.x)), y=Math.max(0,Math.min(100,p.y));
-  layer.innerHTML=`<div class="cx-ping${x>68?' flip':''}${y<14?' low':''}" style="left:${x}%;top:${y}%">`
-    +'<i class="ring"></i><i class="ring r2"></i><i class="xh h"></i><i class="xh v"></i>'
-    +'<span class="ret"><i></i><i></i><i></i><i></i></span><i class="dot"></i>'
-    +`<div class="tag"><small>▸ ALVO MARCADO</small>${escHtml(p.label||'LOCALIZAÇÃO')}</div></div>`;
-  renderMapPing._o=setTimeout(()=>{ const e=layer.querySelector('.cx-ping'); if(e) e.classList.add('out'); },Math.max(0,PING_MS-600-age));
-  renderMapPing._t=setTimeout(renderMapPing,Math.max(100,PING_MS-age+50));
-}
-function setupMapPing(){
-  const vp=document.getElementById('map-viewport'), wrap=document.getElementById('map-wrap');
-  if(!vp || !wrap || vp.dataset.pingBound) return;
-  vp.dataset.pingBound='1';
-  let down=null;
-  vp.addEventListener('pointerdown',e=>{ down={x:e.clientX,y:e.clientY}; },true);
-  vp.addEventListener('click',e=>{
-    if(!pingArmed || role!=='gm') return;
-    if(down && Math.hypot(e.clientX-down.x,e.clientY-down.y)>6) return;      // foi arraste/pan
-    if(e.target.closest('.map-img, .token, button')) return;
-    const r=wrap.getBoundingClientRect();
-    const lab=((document.getElementById('ping-label')||{}).value||'').trim().toUpperCase().slice(0,24)||'LOCALIZAÇÃO';
-    state.mapPing={x:+Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100)).toFixed(2),y:+Math.max(0,Math.min(100,(e.clientY-r.top)/r.height*100)).toFixed(2),label:lab,ts:Date.now()+timerOffset};
-    pingArmed=false; renderMapPing();
-    const b=document.querySelector('#scene-tools button[onclick="armMapPing()"]');
-    if(b){b.textContent='PING NO MAPA';b.classList.remove('on-state');}
-  });
-}
 // ---- quem está online (presença no Firebase, dentro da própria campanha) ----
 let presRef=null, presMine=null, presConn=null, presCb=null, presConnCb=null, presTimer=null;
 function paintPresence(people){
@@ -2603,9 +2627,7 @@ function initOnlinePresence(){
   presTimer=setInterval(()=>{ tries++; if(startPresence()||tries>20) clearInterval(presTimer); },500);
 }
 document.addEventListener('DOMContentLoaded',()=>{
-  setupMapPing();
   renderSceneEffect();
-  renderMapPing();
 });
 
 

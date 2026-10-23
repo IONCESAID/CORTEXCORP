@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <div id="app">
@@ -113,7 +113,7 @@
     <button class="btn small ghost quick-fog gm-only" id="btn-fog-quick" onclick="toggleFog()" title="clique pra trocar o nível da névoa">FOG: DESLIGADO</button>
     <details class="top-menu" id="mn-map"><summary>MAPA ▾</summary><div class="top-menu-pop">
       <button class="btn small ghost" id="btn-freveal" onclick="fogSetTool('reveal')" title="clique no mapa pra revelar uma área">REVELAR</button> <button class="btn small ghost" id="btn-fhide" onclick="fogSetTool('hide')" title="clique numa área revelada pra escondê-la de novo">ESCONDER</button> <button class="btn small ghost" id="btn-rooms" onclick="toggleRoomEdit()">EDITAR SALAS</button> <button class="btn small ghost" onclick="openGmPane('map')">FUNDO, GRID E SALAS…</button> <button class="btn small ghost" onclick="openGmPane('images')">IMAGENS NO MAPA…</button> <button class="btn small ghost" onclick="openGmPane('events')">EVENTOS…</button>
-      <div id="scene-tools" class="scene-tools gm-only"> <label for="scene-effect">CLIMA</label> <select id="scene-effect" onchange="setSceneEffect(this.value)"> <option value="none">SEM EFEITO</option><option value="rain">CHUVA</option><option value="glitch">INTERFERÊNCIA</option><option value="red">ALERTA VERMELHO</option><option value="dark">ESCURO</option> </select> <input id="ping-label" type="text" maxlength="24" placeholder="RÓTULO DO PING" autocomplete="off"> <button class="btn small ghost" onclick="armMapPing()">PING NO MAPA</button> <button class="btn small ghost" onclick="clearMapPing()">LIMPAR PING</button> </div>
+      <div id="scene-tools" class="scene-tools gm-only"> <label for="scene-effect">CLIMA</label> <select id="scene-effect" onchange="setSceneEffect(this.value)"> <option value="none">SEM EFEITO</option><option value="rain">CHUVA</option><option value="glitch">INTERFERÊNCIA</option><option value="red">ALERTA VERMELHO</option><option value="dark">ESCURO</option> </select> </div>
     </div></details>
     <details class="top-menu" id="mn-combat"><summary>COMBATE ▾</summary><div class="top-menu-pop">
       <button class="btn small" onclick="openOverlay('board')" id="btn-board" style="display:none"> QUADRO DE COMBATE </button> <button class="btn small ghost" id="btn-report" onclick="gmGenerateReport()" title="relatório da partida com histórico de combate">📄 RELATÓRIO</button> <button class="btn small ghost" onclick="prevTurn()" title="tecla P">◀ TURNO ANTERIOR</button>
@@ -180,7 +180,6 @@
                 <div class="room-toolbar" id="room-toolbar"></div>
                 <div class="map-viewport" id="map-viewport">
           <div class="map-wrap" id="map-wrap">
-            <div id="map-ping-layer" aria-hidden="true"></div>
             <img id="map-bg-img" class="hidden" alt="">
             <div id="grid-overlay" class="grid-overlay"></div>
             <svg id="fog" class="hidden" viewBox="0 0 160 90" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;z-index:4"></svg>
@@ -211,7 +210,11 @@
 
     <div class="footer-bar" id="footer-bar">
       <div class="log-col" id="log-col">
-        <h3>HISTÓRICO DA SESSÃO <button id="log-toggle-btn" onclick="toggleLog()">▼ RETRAIR</button></h3>
+        <h3>HISTÓRICO DA SESSÃO
+          <span class="comms-actions">
+            <button class="btn small ghost" id="log-toggle-btn" onclick="toggleLog()">▼ RETRAIR</button>
+          </span>
+        </h3>
         <div id="log-list"></div>
               </div>
       <div class="comms-col" id="comms-col">
@@ -362,11 +365,11 @@
 
 </div>
 
-<script src="script.js?v=11"></script>
+<script src="script.js?v=12"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=9"></script>
-<script src="online.js?v=11"></script>
+<script src="firebase-config.js?v=12"></script>
+<script src="online.js?v=12"></script>
 </body>
 </html>
 

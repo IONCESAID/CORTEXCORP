@@ -15,7 +15,7 @@
   const ref = db.ref(raiz + '/d');
   const imgRef = db.ref(raiz + '/img');
 
-  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','sceneEffect','mapPing','timerSec','timerRunning','timerAt'];
+  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','sceneEffect','timerSec','timerRunning','timerAt'];
   const MAX_LOG = 200;
   const INTERVALO = 250;           // ms entre envios
   const contasDoCodigo = {};
@@ -122,7 +122,7 @@
 
   const AREA = { chapter:'chap', location:'chap', turnOrder:'turno', turn:'turno', round:'turno', turnSlots:'turno',
     grid:'grid', fogLevel:'fog', fogCfg:'fog', rooms:'salas', mapBackground:'mapa', mapImages:'imgs', spotlight:'imgs',
-    drawings:'draw', musicNow:'music', sceneEffect:'scene', mapPing:'scene' };
+    drawings:'draw', musicNow:'music', sceneEffect:'scene' };
 
   function aplicar(k, v){
     const p = k.split('|').map(decodeURIComponent), N = state.notes;
@@ -289,7 +289,7 @@
     passo('fog', () => { renderFog(); updateFogButtons(); });
     passo('chap', () => { document.getElementById('chap-label').textContent = state.chapter + ' · ' + state.location; });
     passo('imgs', () => renderMapImages());
-    passo('scene', () => { if(typeof renderSceneEffect === 'function') renderSceneEffect(); if(typeof renderMapPing === 'function') renderMapPing(); });
+    passo('scene', () => { if(typeof renderSceneEffect === 'function') renderSceneEffect(); });
     passo('music', () => { if(typeof musicApply === 'function') musicApply(); });
     passo('draw', () => { if(typeof drawing !== 'undefined' && drawing) return 'adiar'; renderDraw(); });
 
@@ -365,6 +365,7 @@
   function gmPack(){
     return {
       setups: state.setups || [],
+      library: state.library || { enemies: [], npcs: [] },
       tracks: (state.tracks || []).filter(t => !t.blob).map(t => ({ id: t.id, name: t.name, tags: t.tags || [], src: t.src }))
     };
   }
@@ -382,6 +383,13 @@
         const ids = new Set(local.map(x => x.id));
         (d.setups || []).forEach(sp => { if(!ids.has(sp.id)) local.push(sp); });
         state.setups = local;
+        // biblioteca de NPCs/criaturas: junta o que veio do servidor com o que já existe aqui (sem apagar nada)
+        const lib = state.library || (state.library = { enemies: [], npcs: [] });
+        ['enemies', 'npcs'].forEach(k => {
+          const have = new Set((lib[k] || []).map(x => x.lid)); lib[k] = lib[k] || [];
+          ((d.library && d.library[k]) || []).forEach(x => { if(!have.has(x.lid)) lib[k].push(x); });
+        });
+        try{ localStorage.setItem('dept0_library', JSON.stringify(lib)); }catch(e){}
         const tids = new Set((state.tracks || []).map(t => t.id));
         (d.tracks || []).forEach(t => { if(!tids.has(t.id)) state.tracks.push(t); });
         try{ localStorage.setItem('dept0_setups', JSON.stringify(state.setups)); }catch(e){}
