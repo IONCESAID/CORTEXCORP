@@ -470,26 +470,39 @@ function msgComposerUpdate(){ whisperUpdate();
   }
 }
 
+function turnOrderFix(){
+  if(role!=='gm') return;
+  const existe=id=>state.characters[id]||state.enemies[id];
+  const atual=state.turnOrder[state.turn];
+  const nova=state.turnOrder.filter((id,i)=>existe(id)&&state.turnOrder.indexOf(id)===i);
+  Object.keys(state.characters).concat(Object.keys(state.enemies)).forEach(id=>{ if(!nova.includes(id)) nova.push(id); });
+  const mudou=nova.length!==state.turnOrder.length||nova.some((id,i)=>id!==state.turnOrder[i]);
+  if(mudou){
+    state.turnOrder=nova;
+    const ni=nova.indexOf(atual);
+    state.turn=ni>=0?ni:0;
+  }
+  if(state.turn>=state.turnOrder.length||state.turn<0) state.turn=0;
+}
 function renderTurns(){
   const turnNum=document.getElementById('turn-num');
   const turnCurrent=document.getElementById('turn-current');
   const box=document.getElementById('turn-list');
 
   box.innerHTML='';
+  turnOrderFix();
 
+  const pos=(state.turn>=0&&state.turn<state.turnOrder.length)?state.turn:0;
   if(!state.turnOrder.length){
-    state.turn=0;
     turnNum.textContent='00';
     turnCurrent.textContent='—';
     renderTurnSlots();
     return;
   }
 
-  if(state.turn>=state.turnOrder.length) state.turn=0;
+  turnNum.textContent=String(pos+1).padStart(2,'0');
 
-  turnNum.textContent=String(state.turn+1).padStart(2,'0');
-
-  const curId=state.turnOrder[state.turn];
+  const curId=state.turnOrder[pos];
   const cur=state.characters[curId]||state.enemies[curId];
   turnCurrent.textContent=cur?cur.short:'—';
 
@@ -498,15 +511,25 @@ function renderTurns(){
     if(!c) return;
 
     const el=document.createElement('div');
-    el.className='turn-item'+(i===state.turn?' current':'');
+    el.className='turn-item'+(i===pos?' current':'');
     el.innerHTML=`<span>${c.short}</span><span>${c.hp}/${c.maxHp}</span>`;
     box.appendChild(el);
   });
   renderTurnSlots();
 }
+let turnCheckId=0;
+function turnSent(){
+  if(window.enviarAgora) window.enviarAgora();
+  const id=++turnCheckId, t=state.turn, r=state.round;
+  setTimeout(()=>{
+    if(id!==turnCheckId||!window.ONLINE_ON) return;
+    if(state.turn!==t||state.round!==r) alert('O servidor desfez a mudança de turno.\nOlhe a caixinha no canto de baixo à esquerda: se estiver vermelha, o Firebase está recusando as gravações.');
+  },2000);
+}
 function nextTurn(){
   if(role!=='gm') return;
-  if(!state.turnOrder.length) return;
+  turnOrderFix();
+  if(!state.turnOrder.length){ alert('Ninguém na ordem de turnos ainda. Crie um personagem ou um inimigo primeiro.'); return; }
   const nt=(state.turn+1)%state.turnOrder.length;
   if(nt===0) state.round=(state.round||1)+1;
   state.turn=nt;
@@ -514,15 +537,18 @@ function nextTurn(){
   renderTurns();
   renderParticipants();
   const ta=currentTurnActor(); if(ta) addLog(`Rodada ${state.round} — turno de ${escHtml(ta.short)}.`,'turn');
+  turnSent();
 }
 function prevTurn(){
   if(role!=='gm') return;
-  if(!state.turnOrder.length) return;
+  turnOrderFix();
+  if(!state.turnOrder.length){ alert('Ninguém na ordem de turnos ainda. Crie um personagem ou um inimigo primeiro.'); return; }
   if(state.turn===0 && (state.round||1)>1) state.round--;
   state.turn=(state.turn-1+state.turnOrder.length)%state.turnOrder.length;
   resetTurnSlots();
   renderTurns();
   renderParticipants();
+  turnSent();
 }
 
 function skillDiceTxt(s){ return [s.roll?'TESTE '+s.roll:'', s.dmg?'DANO '+s.dmg:''].filter(Boolean).join(' · '); }
@@ -584,7 +610,7 @@ function chooseTurnSlotSkill(key,i){
   const actor=currentTurnActor(); if(!actor || !actor.skills) return;
   const skill=actor.skills[i]; if(!skill) return;
   turnSlotState[key]=skill; openSlotKey=null;
-  addLog(`${escHtml(actor.short)} usou ${escHtml(skill.name)}${skillDiceTxt(skill)?' — '+escHtml(skillDiceTxt(skill)):''}.`,'skill',{actor:actor.short,what:skill.name});
+  addLog(`${escHtml(actor.short)} usou ${escHtml(skill.name)}${skillDiceTxt(skill)?' — '+escHtml(skillDiceTxt(skill)):''}.${skill.desc&&skill.desc.trim()?' '+escHtml(skill.desc.trim()):''}`,'skill',{actor:actor.short,what:skill.name});
   renderTurnSlots();
 }
 function chooseTurnSlotAction(key,i){
@@ -681,6 +707,7 @@ function tmFocusTurn(){
   const i=state.turnOrder.indexOf(tmId); if(i<0) return;
   state.turn=i; resetTurnSlots(); renderTurns(); renderParticipants();
   const ta=currentTurnActor(); if(ta) addLog(`Rodada ${state.round} — turno de ${escHtml(ta.short)}.`,'turn');
+  turnSent();
   closeTokenMenu();
 }
 document.addEventListener('pointerdown',e=>{ if(tmId && !e.target.closest('#token-menu') && !e.target.closest('.token')) closeTokenMenu(); },true);

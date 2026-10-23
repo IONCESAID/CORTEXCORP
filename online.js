@@ -200,7 +200,7 @@
   function status(){
     if(erro){ badge.textContent = erro; badge.style.color = '#e01010'; return; }
     if(!conectado){ badge.textContent = 'sem conexão com o Firebase...'; badge.style.color = '#e0a020'; return; }
-    badge.textContent = 'ONLINE · sala ' + SALA + ' · enviou ' + enviadoEm + ' · recebeu ' + recebidoEm + (pend.size ? ' · baixando imagens' : '');
+    badge.textContent = 'ONLINE · sala ' + SALA + ' · turno ' + ((state.turn || 0) + 1) + ' rodada ' + (state.round || 1) + ' · enviou ' + enviadoEm + ' · recebeu ' + recebidoEm + (pend.size ? ' · baixando imagens' : '');
     badge.style.color = '#3fdc7a';
   }
   badge.textContent = 'conectando...'; badge.style.color = '#aaa';
@@ -209,9 +209,14 @@
   // relógio do servidor: o timer fica igual para todos, mesmo com relógios de PC diferentes
   db.ref('.info/serverTimeOffset').on('value', s => { timerOffset = +s.val() || 0; });
 
+  let avisou = false;
   function erroFirebase(e){
     erro = 'erro Firebase: ' + (e.code || e.message || e) + ' (veja as Regras do banco)';
     status();
+    if(!avisou){
+      avisou = true;
+      setTimeout(() => alert('O FIREBASE RECUSOU A GRAVAÇÃO.\n\n' + erro + '\n\nEnquanto isso não for resolvido, o turno (e tudo que o mestre muda) volta sozinho e não chega nos players.\nConfira as Regras do Realtime Database no console do Firebase.'), 50);
+    }
   }
 
   function enviar(){
@@ -237,7 +242,7 @@
       });
       if(!Object.keys(up).length) return;
       return ref.update(up).then(() => {
-        enviadoEm = hora(); erro = ''; status();
+        enviadoEm = hora(); erro = ''; avisou = false; status();
       }).catch(e => {
         Object.keys(up).forEach(k => { if(up[k] !== null) delete last[k]; });
         erroFirebase(e);
@@ -245,6 +250,8 @@
     };
     if(subs.length) Promise.all(subs).then(mandar); else mandar();   // sem imagem: envia na hora (vale no pagehide)
   }
+
+  window.enviarAgora = function(){ try{ enviar(); }catch(e){ console.log('online.js: erro no envio imediato', e); } };
 
   let timer = null;
   function desenharLogo(){ clearTimeout(timer); timer = setTimeout(desenhar, 120); }
