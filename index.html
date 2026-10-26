@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <div id="app">
@@ -172,6 +172,8 @@
           <button class="btn small ghost" id="btn-reset-view" onclick="fitView()">AJUSTAR À TELA</button>
           <button class="btn small ghost" id="btn-zoom-real" onclick="zoomAt(1)" title="tamanho real do mapa">100%</button>
           <button class="btn small ghost" id="btn-grid" onclick="toggleGrid()">GRID</button>
+          <button class="btn small ghost gm-only" id="btn-undo" onclick="undoAction()" title="desfazer (Ctrl+Z)" disabled>↶ DESFAZER</button>
+          <button class="btn small ghost gm-only" id="btn-redo" onclick="redoAction()" title="refazer (Ctrl+Y)" disabled>↷ REFAZER</button>
           <button class="btn small ghost" id="btn-fog" onclick="toggleFog()" title="clique pra trocar o nível da névoa">FOG: DESLIGADO</button>
           <span style="flex:1"></span>
           <span class="music-mini hidden" id="music-mini">♪ <b id="music-mini-name"></b> <button class="btn small ghost" onclick="musicToggle()" id="music-mini-btn">⏸</button><button class="btn small ghost" onclick="musicStop()">⏹</button></span>
@@ -367,11 +369,11 @@
 
 </div>
 
-<script src="script.js?v=13"></script>
+<script src="script.js?v=14"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=13"></script>
-<script src="online.js?v=13"></script>
+<script src="firebase-config.js?v=14"></script>
+<script src="online.js?v=14"></script>
 </body>
 </html>
 

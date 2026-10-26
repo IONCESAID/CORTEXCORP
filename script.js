@@ -2829,3 +2829,90 @@ function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.dr
   setInterval(()=>{ const gm=role==='gm'; bar.style.display=gm?'flex':'none'; if(!gm&&drawTool) setDrawTool(drawTool); },1500);
   const _ra=renderAll; renderAll=function(){ const r=_ra.apply(this,arguments); try{renderDraw();}catch(e){} return r; };
 })();
+
+var undoStack=[], redoStack=[], undoHead=null, undoBusy=false, undoLastEvt=0, undoTimer=null;
+function undoSnap(){
+  const pos={};
+  [state.characters,state.enemies,state.npcs].forEach(o=>Object.entries(o).forEach(([id,c])=>{ pos[id]=[c.x,c.y]; }));
+  return {
+    rooms:JSON.stringify(state.rooms), size:JSON.stringify(state.mapSize||null), bg:state.mapBackground||null,
+    grid:!!state.grid, fogLevel:state.fogLevel, fog:JSON.stringify(Object.assign({},state.fogCfg,{tool:''})),
+    images:(state.mapImages||[]).map(i=>Object.assign({},i)), draw:JSON.stringify(state.drawings||[]),
+    pos:JSON.stringify(pos), loc:state.location, fx:state.sceneEffect||'none'
+  };
+}
+function undoSame(a,b){
+  if(a.bg!==b.bg || a.images.length!==b.images.length) return false;
+  const imgOk=a.images.every((x,i)=>{ const y=b.images[i], k=Object.keys(x); return k.length===Object.keys(y).length && k.every(n=>x[n]===y[n]); });
+  return imgOk && ['rooms','size','grid','fogLevel','fog','draw','pos','loc','fx'].every(k=>a[k]===b[k]);
+}
+function undoButtons(){
+  const u=document.getElementById('btn-undo'), r=document.getElementById('btn-redo');
+  if(u) u.disabled=!undoStack.length;
+  if(r) r.disabled=!redoStack.length;
+}
+function undoCheck(){
+  if(role!=='gm'||undoBusy) return;
+  const s=undoSnap();
+  if(!undoHead){ undoHead=s; return; }
+  if(undoSame(s,undoHead)) return;
+  undoStack.push(undoHead);
+  if(undoStack.length>60) undoStack.shift();
+  undoHead=s; redoStack=[];
+  undoButtons();
+}
+function undoApply(s){
+  undoBusy=true;
+  state.rooms=JSON.parse(s.rooms);
+  state.mapSize=JSON.parse(s.size)||{w:1000,h:563,fit:'cover',grid:40};
+  applyMapBackground(s.bg);
+  state.grid=s.grid;
+  document.getElementById('grid-overlay').classList.toggle('on',state.grid);
+  document.getElementById('btn-grid').classList.toggle('on-state',state.grid);
+  state.fogLevel=s.fogLevel;
+  state.fogCfg=Object.assign(JSON.parse(s.fog),{tool:state.fogCfg.tool||''});
+  state.mapImages=s.images.map(i=>Object.assign({},i));
+  state.drawings=JSON.parse(s.draw);
+  const pos=JSON.parse(s.pos);
+  Object.keys(pos).forEach(id=>{ const o=findObj(id); if(o&&typeof pos[id][0]==='number'){ o.x=pos[id][0]; o.y=pos[id][1]; } });
+  if(state.location!==s.loc){ state.location=s.loc; document.getElementById('chap-label').textContent=state.chapter+' · '+s.loc; }
+  state.sceneEffect=s.fx;
+  const se=document.getElementById('scene-effect'); if(se) se.value=s.fx;
+  renderSceneEffect(); renderRooms(); renderTokens(); renderFog(); updateFogButtons();
+  applyMapSize(); renderMapImages(); renderDraw(); refreshRoomUI();
+  undoBusy=false;
+  undoHead=undoSnap();
+  undoButtons();
+}
+function undoAction(){
+  if(role!=='gm') return;
+  undoCheck();
+  if(!undoStack.length) return;
+  redoStack.push(undoHead||undoSnap());
+  undoApply(undoStack.pop());
+}
+function redoAction(){
+  if(role!=='gm'||!redoStack.length) return;
+  undoCheck();
+  if(!redoStack.length) return;
+  undoStack.push(undoHead||undoSnap());
+  undoApply(redoStack.pop());
+}
+(function initUndo(){
+  const touch=()=>{ undoLastEvt=Date.now(); };
+  const after=()=>{ touch(); clearTimeout(undoTimer); undoTimer=setTimeout(undoCheck,80); };
+  ['pointerdown','pointermove'].forEach(t=>document.addEventListener(t,touch,true));
+  ['pointerup','change','click','keyup'].forEach(t=>document.addEventListener(t,after,true));
+  setInterval(()=>{
+    if(role!=='gm'){ undoHead=null; return; }
+    if(Date.now()-undoLastEvt>1500 && !undoBusy) undoHead=undoSnap();
+  },1000);
+  document.addEventListener('keydown',e=>{
+    if(role!=='gm'||!(e.ctrlKey||e.metaKey)) return;
+    if(/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||'')) return;
+    const k=e.key.toLowerCase();
+    if(k==='z'&&!e.shiftKey){ e.preventDefault(); undoAction(); }
+    else if(k==='y'||(k==='z'&&e.shiftKey)){ e.preventDefault(); redoAction(); }
+  });
+  undoButtons();
+})();
