@@ -15,7 +15,7 @@
   const ref = db.ref(raiz + '/d');
   const imgRef = db.ref(raiz + '/img');
 
-  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','locations','events','customActions','mapImages','spotlight','drawings','musicNow','sceneEffect','timerSec','timerRunning','timerAt'];
+  const WHOLE = ['chapter','location','turnOrder','turn','round','grid','fogLevel','rooms','mapBackground','mapSize','locations','events','customActions','mapImages','spotlight','drawings','musicNow','sceneEffect','timerSec','timerRunning','timerAt'];
   const MAX_LOG = 200;
   const INTERVALO = 250;           // ms entre envios
   const contasDoCodigo = {};
@@ -121,7 +121,7 @@
   }
 
   const AREA = { chapter:'chap', location:'chap', turnOrder:'turno', turn:'turno', round:'turno', turnSlots:'turno',
-    grid:'grid', fogLevel:'fog', fogCfg:'fog', rooms:'salas', mapBackground:'mapa', mapImages:'imgs', spotlight:'imgs',
+    grid:'grid', fogLevel:'fog', fogCfg:'fog', rooms:'salas', mapBackground:'mapa', mapSize:'mapa', mapImages:'imgs', spotlight:'imgs',
     drawings:'draw', musicNow:'music', sceneEffect:'scene' };
 
   function aplicar(k, v){
@@ -280,7 +280,7 @@
       }
     };
 
-    passo('mapa', () => applyMapBackground(state.mapBackground));
+    passo('mapa', () => { applyMapBackground(state.mapBackground); applyMapSize(); });
     passo('grid', () => {
       const g = document.getElementById('grid-overlay'); if(g) g.classList.toggle('on', !!state.grid);
       const b = document.getElementById('btn-grid'); if(b) b.classList.toggle('on-state', !!state.grid);

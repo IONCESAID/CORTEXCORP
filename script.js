@@ -1,4 +1,5 @@
 let role=null, currentLoginId=null, roomsRole=null;
+var viewAuto=true, mapSizeSig='', mapLock=true, sizeDrag=null, ZOOM_MIN=0.1, ZOOM_MAX=12;
 const state={
   chapter:'CAPÍTULO 01 — ORIENTAÇÃO', location:'CORTEX HEADQUARTERS',
   timerSec:0, timerRunning:false, timerAt:0, musicNow:null, turn:0, round:1, startedAt:Date.now(), mapBackground:null,
@@ -7,6 +8,7 @@ const state={
   fogCfg:{vision:false,radius:14,brush:12,tool:'',holes:[]},
   setups:[], activeSetup:null,
   zoom:1, panX:0, panY:0,
+  mapSize:{w:1000,h:563,fit:'cover',grid:40},
   characters:{},
   enemies:{},
   npcs:{},
@@ -154,6 +156,7 @@ setInterval(renderTimer,500);
 function allCombatants(){return [...Object.entries(state.characters).map(([id,c])=>({id,...c,kind:'pc'})),...Object.entries(state.enemies).map(([id,c])=>({id,...c,kind:'enemy'})),...Object.entries(state.npcs).map(([id,c])=>({id,...c,kind:'npc'}))];}
 
 function renderAll(){
+  applyMapSize();
   renderParticipants(); renderEnemiesList(); renderNpcsList(); renderTokens(); renderMapImages(); renderLog(); renderTurns(); renderTimer(); updateUserBadge(); renderSceneEffect();
   document.getElementById('chap-label').textContent=state.chapter+' · '+state.location;
 }
@@ -297,21 +300,25 @@ function fogCircles(){
   if(state.fogCfg.vision) Object.values(state.characters).forEach(ch=>c.push({x:ch.x,y:ch.y,r:state.fogCfg.radius}));
   return c;
 }
+function fogDims(){ const m=mapSizeNow(), vh=160*m.h/m.w; return {vh,fy:vh/100}; }
 function isRevealed(x,y){
-  if(fogCircles().some(h=>Math.hypot((x-h.x)*1.6,(y-h.y)*0.9)<=h.r*1.6)) return true;
+  const fy=fogDims().fy;
+  if(fogCircles().some(h=>Math.hypot((x-h.x)*1.6,(y-h.y)*fy)<=h.r*1.6)) return true;
   return state.rooms.some(r=>r.revealed && r.kind!=='cover' && x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h);
 }
 function renderFog(){
   const svg=document.getElementById('fog'); if(!svg) return;
+  const {vh,fy}=fogDims();
+  svg.setAttribute('viewBox','0 0 160 '+vh);
   const lvl=FOG_LEVELS[state.fogLevel]||FOG_LEVELS[0];
   if(!lvl.o){ svg.classList.add('hidden'); svg.innerHTML=''; updateTokenVisibility(); return; }
   svg.classList.remove('hidden');
   const op= role==='gm'? Math.min(lvl.o,.5) : lvl.o;
-  const holes=fogCircles().map(h=>`<circle cx="${h.x*1.6}" cy="${h.y*0.9}" r="${h.r*1.6}"/>`).join('')
-    + state.rooms.filter(r=>r.revealed && r.kind!=='cover').map(r=>`<rect x="${r.x*1.6}" y="${r.y*0.9}" width="${r.w*1.6}" height="${r.h*0.9}"/>`).join('');
+  const holes=fogCircles().map(h=>`<circle cx="${h.x*1.6}" cy="${h.y*fy}" r="${h.r*1.6}"/>`).join('')
+    + state.rooms.filter(r=>r.revealed && r.kind!=='cover').map(r=>`<rect x="${r.x*1.6}" y="${r.y*fy}" width="${r.w*1.6}" height="${r.h*fy}"/>`).join('');
   svg.innerHTML=`<defs><filter id="fogblur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.4"/></filter>
-    <mask id="fogmask"><rect width="160" height="90" fill="white"/><g fill="black" filter="url(#fogblur)">${holes}</g></mask></defs>
-    <rect width="160" height="90" fill="#000" fill-opacity="${op}" mask="url(#fogmask)"/>`;
+    <mask id="fogmask"><rect width="160" height="${vh}" fill="white"/><g fill="black" filter="url(#fogblur)">${holes}</g></mask></defs>
+    <rect width="160" height="${vh}" fill="#000" fill-opacity="${op}" mask="url(#fogmask)"/>`;
   updateTokenVisibility();
 }
 function updateTokenVisibility(){
@@ -349,19 +356,132 @@ function fogClick(e){
   const x=(e.clientX-rect.left)/rect.width*100, y=(e.clientY-rect.top)/rect.height*100;
   if(x<0||x>100||y<0||y>100) return;
   if(state.fogCfg.tool==='reveal') state.fogCfg.holes.push({x,y,r:state.fogCfg.brush});
-  else if(state.fogCfg.tool==='hide') state.fogCfg.holes=state.fogCfg.holes.filter(h=>Math.hypot((x-h.x)*1.6,(y-h.y)*0.9)>h.r*1.6);
+  else if(state.fogCfg.tool==='hide') state.fogCfg.holes=state.fogCfg.holes.filter(h=>Math.hypot((x-h.x)*1.6,(y-h.y)*fogDims().fy)>h.r*1.6);
   renderFog();
 }
 
 function applyMapTransform(){
-  document.getElementById('map-wrap').style.transform=`translate(${state.panX}px,${state.panY}px) scale(${state.zoom})`;
+  const wrap=document.getElementById('map-wrap');
+  wrap.style.transform=`translate(${state.panX}px,${state.panY}px) scale(${state.zoom})`;
+  wrap.style.setProperty('--z',state.zoom);
   document.getElementById('zoom-lvl').textContent=Math.round(state.zoom*100)+'%';
+  const rg=document.getElementById('zoom-range'); if(rg) rg.value=Math.log2(state.zoom).toFixed(3);
 }
-function zoomMap(delta){
-  state.zoom=Math.max(0.5,Math.min(2.5,+(state.zoom+delta).toFixed(2)));
+function clampZoom(z){ return Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,z)); }
+function zoomAt(z,sx,sy){
+  const r=document.getElementById('map-viewport').getBoundingClientRect();
+  const cx=r.left+r.width/2, cy=r.top+r.height/2;
+  if(sx===undefined){ sx=cx; sy=cy; }
+  const nz=clampZoom(z), k=nz/state.zoom;
+  state.panX=(sx-cx)-k*(sx-cx-state.panX);
+  state.panY=(sy-cy)-k*(sy-cy-state.panY);
+  state.zoom=+nz.toFixed(3);
+  viewAuto=false;
   applyMapTransform();
 }
-function resetView(){ state.zoom=1; state.panX=0; state.panY=0; applyMapTransform(); }
+function zoomMap(dir){ zoomAt(state.zoom*(dir>0?1.25:0.8)); }
+function zoomSlider(v){ zoomAt(Math.pow(2,+v)); }
+function fitView(){
+  const vp=document.getElementById('map-viewport'); if(!vp) return;
+  const vw=vp.clientWidth, vh=vp.clientHeight; if(!vw||!vh) return;
+  const m=mapSizeNow();
+  state.zoom=+clampZoom(Math.min(vw/m.w,vh/m.h)).toFixed(3); state.panX=0; state.panY=0;
+  viewAuto=true;
+  applyMapTransform();
+}
+function resetView(){ fitView(); }
+
+function clampPx(v){ return Math.max(200,Math.min(6000,Math.round(+v)||1000)); }
+function mapSizeNow(){
+  const m=Object.assign({w:1000,h:563,fit:'cover',grid:40},state.mapSize||{});
+  m.w=clampPx(m.w); m.h=clampPx(m.h);
+  return m;
+}
+function setMapSize(m,noFit){
+  state.mapSize=Object.assign({},m,{w:clampPx(m.w),h:clampPx(m.h)});
+  applyMapSize(noFit);
+}
+function applyMapSize(noFit){
+  const wrap=document.getElementById('map-wrap'); if(!wrap) return;
+  const m=mapSizeNow(), sig=[m.w,m.h,m.fit,m.grid,m.tok||0].join('|');
+  if(sig===mapSizeSig) return;
+  mapSizeSig=sig;
+  wrap.style.width=m.w+'px'; wrap.style.height=m.h+'px';
+  if(m.tok) wrap.style.setProperty('--tok',m.tok+'px'); else wrap.style.removeProperty('--tok');
+  const img=document.getElementById('map-bg-img'); if(img) img.style.objectFit=m.fit;
+  const g=document.getElementById('grid-overlay');
+  if(g){
+    const l=`rgba(243,240,232,.18) 0px,rgba(243,240,232,.18) 1px,transparent 1px,transparent ${m.grid}px`;
+    g.style.backgroundImage=`repeating-linear-gradient(0deg,${l}),repeating-linear-gradient(90deg,${l})`;
+  }
+  renderFog();
+  if(viewAuto && !noFit) fitView();
+}
+function gmMapSize(k,v){
+  if(role!=='gm') return;
+  const m=mapSizeNow();
+  if(k==='fit') m.fit=v;
+  else if(k==='tok'){ v=Math.round(+v); if(v>=16&&v<=200) m.tok=v; else delete m.tok; }
+  else if(k==='grid') m.grid=Math.max(10,Math.min(200,Math.round(+v)||40));
+  else {
+    v=Math.round(+v); if(!(v>0)) return refreshRoomUI();
+    const r=m.w/m.h;
+    if(k==='w'){ m.w=v; if(mapLock) m.h=Math.round(v/r); }
+    else { m.h=v; if(mapLock) m.w=Math.round(v*r); }
+  }
+  setMapSize(m); refreshRoomUI();
+}
+function gmMapPreset(v){
+  if(role!=='gm'||!v) return;
+  const p=v.split(':').map(Number), m=mapSizeNow();
+  m.h=Math.round(m.w*p[1]/p[0]);
+  setMapSize(m); refreshRoomUI();
+}
+function gmMapMatchImage(){
+  if(role!=='gm'||!state.mapBackground) return;
+  const i=new Image();
+  i.onload=()=>{ const m=mapSizeNow(); m.h=Math.round(m.w*i.naturalHeight/i.naturalWidth); setMapSize(m); refreshRoomUI(); };
+  i.src=state.mapBackground;
+}
+function toggleMapLock(){ mapLock=!mapLock; refreshRoomUI(); }
+const MAP_RATIOS=['16:9','4:3','3:2','1:1','3:4','9:16','21:9'];
+const MAP_FITS=[['cover','IMAGEM: PREENCHER'],['contain','IMAGEM: INTEIRA'],['fill','IMAGEM: ESTICAR']];
+function mapToolsHtml(){
+  const m=mapSizeNow();
+  return `<b>MAPA</b>
+    <label>LARGURA <input type="number" min="200" max="6000" step="50" value="${m.w}" onchange="gmMapSize('w',this.value)"></label>
+    <label>ALTURA <input type="number" min="200" max="6000" step="50" value="${m.h}" onchange="gmMapSize('h',this.value)"></label>
+    <button class="btn small ghost ${mapLock?'on-state':''}" onclick="toggleMapLock()" title="mantém a proporção ao mudar largura ou altura">${mapLock?'🔒':'🔓'} PROPORÇÃO</button>
+    <select onchange="gmMapPreset(this.value)"><option value="">FORMATO…</option>${MAP_RATIOS.map(r=>`<option value="${r}">${r}</option>`).join('')}</select>
+    <label>CÉLULA <input type="number" min="10" max="200" step="5" value="${m.grid}" onchange="gmMapSize('grid',this.value)"></label>
+    <label>TOKEN <input type="number" min="16" max="200" step="2" value="${m.tok||''}" placeholder="38" onchange="gmMapSize('tok',this.value)"></label>
+    <select onchange="gmMapSize('fit',this.value)">${MAP_FITS.map(f=>`<option value="${f[0]}" ${m.fit===f[0]?'selected':''}>${f[1]}</option>`).join('')}</select>
+    ${state.mapBackground?'<button class="btn small ghost" onclick="gmMapMatchImage()">USAR FORMATO DA IMAGEM</button>':''}
+    <button class="btn small ghost" onclick="fitView()">AJUSTAR À TELA</button>`;
+}
+function sizeHandleDown(e){
+  if(role!=='gm') return;
+  e.stopPropagation(); e.preventDefault();
+  const m=mapSizeNow(), el=e.currentTarget;
+  sizeDrag={sx:e.clientX,sy:e.clientY,w:m.w,h:m.h,z:state.zoom,el};
+  el.setPointerCapture(e.pointerId);
+  el.addEventListener('pointermove',sizeHandleMove);
+  el.addEventListener('pointerup',sizeHandleUp);
+  el.addEventListener('pointercancel',sizeHandleUp);
+}
+function sizeHandleMove(e){
+  const d=sizeDrag; if(!d) return;
+  let w=d.w+2*(e.clientX-d.sx)/d.z, h=d.h+2*(e.clientY-d.sy)/d.z;
+  if(mapLock) h=w*d.h/d.w;
+  setMapSize(Object.assign(mapSizeNow(),{w,h}),true);
+}
+function sizeHandleUp(){
+  const d=sizeDrag; if(!d) return;
+  d.el.removeEventListener('pointermove',sizeHandleMove);
+  d.el.removeEventListener('pointerup',sizeHandleUp);
+  d.el.removeEventListener('pointercancel',sizeHandleUp);
+  sizeDrag=null; refreshRoomUI();
+}
 
 let panClick=null, panning=false, panStart={x:0,y:0}, panOrigin={x:0,y:0};
 function mapPointerDown(e){
@@ -376,12 +496,17 @@ function mapPointerMove(e){
   if(!panning) return;
   state.panX=panOrigin.x+(e.clientX-panStart.x);
   state.panY=panOrigin.y+(e.clientY-panStart.y);
+  viewAuto=false;
   applyMapTransform();
 }
 function mapPointerUp(e){
   if(panning && e && e.type==='pointerup' && role==='gm' && state.fogCfg.tool && panClick && Math.hypot(e.clientX-panClick.x,e.clientY-panClick.y)<5) fogClick(e);
   panning=false; document.getElementById('map-viewport').style.cursor=''; }
-function mapWheelZoom(e){ e.preventDefault(); zoomMap(e.deltaY<0? 0.1 : -0.1); }
+function mapWheelZoom(e){
+  e.preventDefault();
+  const d=Math.max(-100,Math.min(100,e.deltaMode===1?e.deltaY*33:e.deltaY));
+  zoomAt(state.zoom*Math.exp(-d*0.002),e.clientX,e.clientY);
+}
 (function initMapPanZoom(){
   const vp=document.getElementById('map-viewport');
   vp.addEventListener('pointerdown',mapPointerDown);
@@ -389,6 +514,7 @@ function mapWheelZoom(e){ e.preventDefault(); zoomMap(e.deltaY<0? 0.1 : -0.1); }
   vp.addEventListener('pointerup',mapPointerUp);
   vp.addEventListener('pointerleave',mapPointerUp);
   vp.addEventListener('wheel',mapWheelZoom,{passive:false});
+  if(window.ResizeObserver) new ResizeObserver(()=>{ if(viewAuto) fitView(); }).observe(vp);
 })();
 
 function setFooterCollapsed(c){
@@ -623,7 +749,7 @@ function findObj(id){return state.characters[id]||state.enemies[id]||state.npcs[
 
 // ---------- CONTROLES RÁPIDOS DE HP (iguais no menu do token e no quadro de combate) ----------
 function hpQuickHtml(id,key){
-  return `<div class="tm-row">${[-10,-5,-1,1,5,10].map(n=>`<button class="btn small ${n<0?'':'ghost'}" onclick="qhDelta('${id}',${n})">${n>0?'+':''}${n}</button>`).join('')}</div>
+  return `<div class="tm-row">${[-10,-5,-1,1,5,10].map(n=>`<button class="btn small ghost ${n<0?'danger':''}" onclick="qhDelta('${id}',${n})">${n>0?'+':''}${n}</button>`).join('')}</div>
     <div class="tm-row"><input id="qh-${key}-${id}" type="number" min="1" placeholder="valor" onkeydown="if(event.key==='Enter')qhCustom('${id}','${key}',-1)"><button class="btn small" onclick="qhCustom('${id}','${key}',-1)">DANO</button><button class="btn small ghost" onclick="qhCustom('${id}','${key}',1)">CURA</button></div>`;
 }
 function qhDelta(id,n){ applyDelta(id,n); }
@@ -1533,7 +1659,7 @@ function gmRenderMap(){
     const cover=r.kind==='cover', on=r.covered!==false;
     return `<div class="gm-char-row" style="flex-wrap:wrap"><span style="font-size:.58rem;color:${cover?'var(--amber)':'var(--gray)'};width:44px">${cover?'TAMPA':'SALA'}</span>
       <input class="mini-input" style="width:110px;text-align:left" value="${escHtml(r.name)}" placeholder="nome" onchange="gmRoomName('${r.id}',this.value)">
-      ${cover?`<button class="btn small ${on?'':'ghost'}" onclick="gmRoomCover('${r.id}',${!on})">${on?'TAMPANDO':'ABERTA'}</button>`
+      ${cover?`<button class="btn small ghost ${on?'on-state':''}" onclick="gmRoomCover('${r.id}',${!on})">${on?'TAMPANDO':'ABERTA'}</button>`
       :`<select class="mini-input" style="width:84px" onchange="gmRoomColor('${r.id}',this.value)">${Object.keys(ROOM_COLORS).map(c=>`<option value="${c}" ${r.color===c?'selected':''}>${ROOM_LABELS[c]}</option>`).join('')}</select>
       <label style="font-size:.58rem;white-space:nowrap"><input type="checkbox" onchange="gmRoomRevealed('${r.id}',this.checked)" ${r.revealed?'checked':''}> REVELADA</label>`}
       <button class="btn small ghost" title="duplicar" onclick="gmRoomDuplicate('${r.id}')">⧉</button>
@@ -1544,7 +1670,10 @@ function gmRenderMap(){
       ${state.mapBackground?`<img src="${state.mapBackground}" style="width:100%;height:100%;object-fit:cover">`:'<span style="font-size:.6rem;color:var(--gray)">NO CUSTOM MAP — USING DEFAULT LAYOUT</span>'}
     </div>
     <div class="form-row"><label>INSERIR NOVO MAPA DE FUNDO</label><input type="file" accept="image/*" onchange="gmUploadMap(event)"></div>
-    ${state.mapBackground?'<button class="btn small ghost" onclick="gmClearMap()">REMOVE CUSTOM MAP</button>':''}
+    ${state.mapBackground?'<button class="btn small ghost danger" onclick="gmClearMap()">REMOVE CUSTOM MAP</button>':''}
+    <h4 style="margin-top:16px">TAMANHO DO MAPA E GRID</h4>
+    <div class="map-tools">${mapToolsHtml()}</div>
+    <div style="font-size:.58rem;color:var(--gray);margin-top:4px">Salas, tokens e imagens acompanham o tamanho do mapa. Também dá pra arrastar o quadrado amarelo no canto do mapa (botão EDITAR MAPA).</div>
     <h4 style="margin-top:16px">LOCALIZAÇÃO ATUAL (etiquetas de mapa)</h4>
     <div class="form-row"><select id="map-select" onchange="gmSetLocation(this.value)">${state.locations.map(l=>`<option ${l===state.location?'selected':''}>${escHtml(l)}</option>`).join('')}</select></div>
     <div style="font-size:.6rem;color:var(--gray);margin-bottom:4px">EDITAR / EXCLUIR ETIQUETAS</div>
@@ -1555,17 +1684,17 @@ function gmRenderMap(){
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
       <button class="btn small" onclick="gmAddRoom('room')">+ ADICIONAR SALA</button>
       <button class="btn small" onclick="gmAddRoom('cover')" title="quadrado preto que esconde uma parte do mapa dos players">+ ADICIONAR TAMPA</button>
-      <button class="btn small ${state.roomEdit?'':'ghost'}" onclick="toggleRoomEdit()">${state.roomEdit?'✔ EDITANDO NO MAPA (sair)':'MOVER / REDIMENSIONAR NO MAPA'}</button>
+      <button class="btn small ghost ${state.roomEdit?'on-state':''}" onclick="toggleRoomEdit()">${state.roomEdit?'✔ EDITANDO NO MAPA (sair)':'MOVER / REDIMENSIONAR NO MAPA'}</button>
     </div>
     <div style="font-size:.58rem;color:var(--gray);margin-top:4px">TAMPA = quadrado preto que cobre o mapa (tokens e imagens também) pros players; você o vê listrado. Clique em TAMPANDO/ABERTA pra revelar o que está embaixo. No modo de edição (feche este painel ou abra em outra tela) arraste pra mover, canto vermelho redimensiona, ✕ exclui.</div>
     <h4 style="margin-top:16px">FOG OF WAR</h4>
     <div style="font-size:.6rem;color:var(--gray);margin-bottom:6px">O nível define o quão escura é a névoa. Áreas reveladas ficam limpas, e os players não veem inimigos/NPCs fora delas. Pra você a névoa aparece mais fraca.</div>
-    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${FOG_LEVELS.map((l,i)=>`<button class="btn small ${state.fogLevel===i?'':'ghost'}" onclick="setFogLevel(${i})">${l.n}</button>`).join('')}</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${FOG_LEVELS.map((l,i)=>`<button class="btn small ghost ${state.fogLevel===i?'on-state':''}" onclick="setFogLevel(${i})">${l.n}</button>`).join('')}</div>
     <label style="font-size:.68rem"><input type="checkbox" onchange="fogSetVision(this.checked)" ${state.fogCfg.vision?'checked':''}> Visão dos players (revela ao redor de cada token)</label>
     <div class="mus-ctrl">RAIO DA VISÃO <input type="range" min="4" max="40" value="${state.fogCfg.radius}" oninput="fogSetRadius(this.value)"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-      <button class="btn small ${state.fogCfg.tool==='reveal'?'':'ghost'}" onclick="fogSetTool('reveal')">PINCEL: REVELAR</button>
-      <button class="btn small ${state.fogCfg.tool==='hide'?'':'ghost'}" onclick="fogSetTool('hide')">PINCEL: ESCONDER</button>
+      <button class="btn small ghost ${state.fogCfg.tool==='reveal'?'on-state':''}" onclick="fogSetTool('reveal')">PINCEL: REVELAR</button>
+      <button class="btn small ghost ${state.fogCfg.tool==='hide'?'on-state':''}" onclick="fogSetTool('hide')">PINCEL: ESCONDER</button>
       <button class="btn small ghost" onclick="fogClear()">LIMPAR REVELAÇÕES (${state.fogCfg.holes.length})</button>
     </div>
     <div class="mus-ctrl">TAMANHO DO PINCEL <input type="range" min="4" max="40" value="${state.fogCfg.brush}" oninput="fogSetBrush(this.value)"></div>
@@ -1612,6 +1741,11 @@ function renderRooms(){
     if(state.roomEdit) el.addEventListener('pointerdown',roomPointerDown);
     wrap.insertBefore(el,anchor);
   });
+  wrap.querySelectorAll('.map-size-handle').forEach(h=>h.remove());
+  if(gm && state.roomEdit){
+    const h=document.createElement('div'); h.className='map-size-handle'; h.title='arraste para mudar o tamanho do mapa';
+    h.addEventListener('pointerdown',sizeHandleDown); wrap.appendChild(h);
+  }
 }
 function renderRoomToolbar(){
   const tb=document.getElementById('room-toolbar'); if(!tb) return;
@@ -1619,18 +1753,18 @@ function renderRoomToolbar(){
   tb.classList.toggle('on',active);
   if(!active){ tb.innerHTML=''; return; }
   const r=roomById(selectedRoomId);
-  let h=`<button class="btn small" onclick="gmAddRoom('room')">+ SALA</button><button class="btn small" onclick="gmAddRoom('cover')" title="esconde uma parte do mapa dos players">+ TAMPA</button><span class="rt-sep"></span>`;
+  let h=`<div class="map-tools">${mapToolsHtml()}</div><span class="rt-break"></span><button class="btn small" onclick="gmAddRoom('room')">+ SALA</button><button class="btn small" onclick="gmAddRoom('cover')" title="esconde uma parte do mapa dos players">+ TAMPA</button><span class="rt-sep"></span>`;
   if(r){
     const cover=r.kind==='cover', on=r.covered!==false;
     h+=`<b style="color:${cover?'var(--amber)':'var(--white)'}">${cover?'TAMPA':'SALA'}</b>
       <input value="${escHtml(r.name)}" placeholder="nome" style="width:120px" onchange="gmRoomName('${r.id}',this.value)">`;
     h+= cover
-      ? `<button class="btn small ${on?'':'ghost'}" onclick="gmRoomCover('${r.id}',${!on})">${on?'TAMPANDO (clique pra abrir)':'ABERTA (clique pra tampar)'}</button>`
+      ? `<button class="btn small ghost ${on?'on-state':''}" onclick="gmRoomCover('${r.id}',${!on})">${on?'TAMPANDO (clique pra abrir)':'ABERTA (clique pra tampar)'}</button>`
       : `<select onchange="gmRoomColor('${r.id}',this.value)">${Object.keys(ROOM_COLORS).map(c=>`<option value="${c}" ${r.color===c?'selected':''}>${ROOM_LABELS[c]}</option>`).join('')}</select>
          <label style="white-space:nowrap"><input type="checkbox" onchange="gmRoomRevealed('${r.id}',this.checked)" ${r.revealed?'checked':''}> REVELADA</label>`;
-    h+=`<button class="btn small ghost" onclick="gmRoomDuplicate('${r.id}')">⧉ DUPLICAR</button><button class="btn small ghost" onclick="gmRoomDelete('${r.id}')">✕ EXCLUIR</button>`;
+    h+=`<button class="btn small ghost" onclick="gmRoomDuplicate('${r.id}')">⧉ DUPLICAR</button><button class="btn small ghost danger" onclick="gmRoomDelete('${r.id}')">✕ EXCLUIR</button>`;
   } else h+=`<span style="color:var(--gray)">Nenhum quadrado selecionado.</span>`;
-  h+=`<span class="rt-hint">Clique num quadrado pra selecionar · arraste pra mover · canto vermelho redimensiona · ✕ (ou tecla Delete) exclui.</span>`;
+  h+=`<span class="rt-hint">Clique num quadrado pra selecionar · arraste pra mover · canto vermelho redimensiona · ✕ (ou tecla Delete) exclui. O quadrado amarelo no canto do mapa muda o tamanho do mapa.</span>`;
   tb.innerHTML=h;
 }
 function toggleRoomEdit(){
@@ -1638,7 +1772,7 @@ function toggleRoomEdit(){
   state.roomEdit=!state.roomEdit; if(!state.roomEdit) selectedRoomId=null;
   renderRooms(); renderRoomToolbar();
   document.getElementById('btn-rooms').classList.toggle('on-state',state.roomEdit);
-  document.getElementById('btn-rooms').textContent= state.roomEdit? 'SAIR DA EDIÇÃO':'EDITAR SALAS';
+  document.getElementById('btn-rooms').textContent= state.roomEdit? 'SAIR DA EDIÇÃO':'EDITAR MAPA';
   if(gmActivePane==='map') gmRenderMap();
 }
 document.addEventListener('keydown',e=>{
@@ -2215,7 +2349,7 @@ function gmRenderMusic(){
   const ed=music.editId?state.tracks.find(t=>t.id===music.editId):null;
   const playing=cur&&!music.audio.paused;
   const rows=list.map(t=>`<div class="track-row ${t.id===music.currentId?'playing':''}">
-      <button class="btn small ${t.id===music.currentId&&playing?'':'ghost'}" onclick="${t.id===music.currentId?'musicToggle()':`musicPlay('${t.id}')`}">${t.id===music.currentId&&playing?'⏸':'▶'}</button>
+      <button class="btn small ghost ${t.id===music.currentId&&playing?'on-state':''}" onclick="${t.id===music.currentId?'musicToggle()':`musicPlay('${t.id}')`}">${t.id===music.currentId&&playing?'⏸':'▶'}</button>
       <div class="tn"><b>${escHtml(t.name)}</b>${t.tags.map(x=>`<span class="tag-chip">${escHtml(x)}</span>`).join('')}</div>
       <button class="btn small ghost" onclick="musicEdit('${t.id}')">✎</button>
       <button class="btn small ghost" onclick="musicDelete('${t.id}')">✕</button></div>`).join('') || `<div style="padding:10px;font-size:.65rem;color:var(--gray)">${state.tracks.length?'Nenhuma faixa com essa etiqueta.':'Nenhuma faixa ainda — adicione abaixo.'}</div>`;
@@ -2257,7 +2391,7 @@ function loadSetups(){ try{ const j=localStorage.getItem('dept0_setups'); if(j){
 function captureSetup(){
   const tokens={};
   [state.characters,state.enemies,state.npcs].forEach(o=>Object.entries(o).forEach(([id,c])=>{ tokens[id]={x:c.x,y:c.y}; }));
-  return {bg:state.mapBackground||null,tokens,rooms:clone(state.rooms),
+  return {bg:state.mapBackground||null,tokens,rooms:clone(state.rooms),size:clone(mapSizeNow()),
     fog:{level:state.fogLevel,cfg:{...clone(state.fogCfg),tool:''}},grid:state.grid,location:state.location,
     images:clone(state.mapImages||[]),
     music:music.currentId||'',musicName:(state.tracks.find(t=>t.id===music.currentId)||{}).name||''};
@@ -2270,6 +2404,7 @@ function applySetup(sp){
   applyMapBackground(sp.bg);
   Object.entries(sp.tokens||{}).forEach(([id,pos])=>{ const o=findObj(id); if(o){ o.x=pos.x; o.y=pos.y; } });
   state.rooms=clone(sp.rooms||[]);
+  state.mapSize=clone(sp.size||{w:1000,h:563,fit:'cover',grid:40}); applyMapSize();
   if(Array.isArray(sp.images)){ state.mapImages=clone(sp.images); renderMapImages(); }
   state.fogLevel=(sp.fog&&sp.fog.level)||0;
   state.fogCfg={vision:false,radius:14,brush:12,holes:[],...clone((sp.fog&&sp.fog.cfg)||{}),tool:''};
@@ -2448,7 +2583,7 @@ function gmRenderImages(){
   const rows=(state.mapImages||[]).map(im=>`<div class="track-row" style="flex-wrap:wrap">
       <img class="setup-thumb" src="${escHtml(im.src)}">
       <div class="tn"><b>${escHtml(im.title||'(sem título)')}</b><span style="color:var(--gray)">${im.shown?'visível pros players':'oculta dos players'}</span></div>
-      <button class="btn small ${im.shown?'':'ghost'}" onclick="gmToggleImage('${im.id}')">${im.shown?'👁 VISÍVEL':'REVELAR'}</button>
+      <button class="btn small ghost ${im.shown?'on-state':''}" onclick="gmToggleImage('${im.id}')">${im.shown?'👁 VISÍVEL':'REVELAR'}</button>
       <button class="btn small" title="abre o pop-up grande na tela de todos" onclick="gmSpotlight('${im.id}')">📣 MOSTRAR A TODOS</button>
       <button class="btn small ghost" onclick="gmRenameImage('${im.id}')">✎</button>
       <button class="btn small ghost" onclick="gmDeleteImage('${im.id}')">✕</button>
@@ -2487,7 +2622,7 @@ renderNotes(); renderRooms(); loadSetups(); loadLibrary(); renderFog(); updateFo
   vp.addEventListener('pointerdown',e=>{ pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pts.size===2){ panning=false; const [a,b]=[...pts.values()]; d0=Math.hypot(a.x-b.x,a.y-b.y)||1; z0=state.zoom; } });
   vp.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(pts.size===2){ const [a,b]=[...pts.values()]; state.zoom=Math.max(.3,Math.min(5,z0*Math.hypot(a.x-b.x,a.y-b.y)/d0)); applyMapTransform(); } });
+    if(pts.size===2){ const [a,b]=[...pts.values()]; state.zoom=clampZoom(z0*Math.hypot(a.x-b.x,a.y-b.y)/d0); viewAuto=false; applyMapTransform(); } });
   const up=e=>pts.delete(e.pointerId);
   vp.addEventListener('pointerup',up); vp.addEventListener('pointercancel',up); vp.addEventListener('pointerleave',up);
 })();
@@ -2634,7 +2769,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 (function initBackupBar(){
   const b=document.createElement('div'); b.id='backup-bar';
-  b.innerHTML='<span id="bk-st">backup</span><button onclick="exportCampaign()">SALVAR .JSON</button><button onclick="document.getElementById(\'bk-imp\').click()">CARREGAR</button><button onclick="restoreAutosave()">AUTOSAVE</button><input id="bk-imp" type="file" accept=".json,application/json" style="display:none" onchange="importCampaign(event)">';
+  b.innerHTML='<span id="bk-st">backup</span><button class="btn tiny ghost" onclick="exportCampaign()">SALVAR .JSON</button><button class="btn tiny ghost" onclick="document.getElementById(\'bk-imp\').click()">CARREGAR</button><button class="btn tiny ghost" onclick="restoreAutosave()">AUTOSAVE</button><input id="bk-imp" type="file" accept=".json,application/json" style="display:none" onchange="importCampaign(event)">';
   (document.querySelector('.topbar')||document.body).appendChild(b);
   setInterval(()=>{ const gm=(typeof role!=='undefined'&&role==='gm'); b.style.display=gm?'flex':'none'; if(gm) autosaveNow(); },20000);
   setInterval(()=>{ b.style.display=(typeof role!=='undefined'&&role==='gm')?'flex':'none'; },1500);
@@ -2670,7 +2805,7 @@ function renderDraw(){
 function drawPt(e){ const r=document.getElementById('draw-layer').getBoundingClientRect(); return [+((e.clientX-r.left)/r.width*160).toFixed(2),+((e.clientY-r.top)/r.height*90).toFixed(2)]; }
 function setDrawTool(t){ drawTool=(drawTool===t)?null:t;
   document.getElementById('map-viewport').classList.toggle('draw-mode',!!drawTool);
-  document.querySelectorAll('#draw-bar [data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===drawTool)); }
+  document.querySelectorAll('#draw-bar [data-tool]').forEach(b=>b.classList.toggle('on-state',b.dataset.tool===drawTool)); }
 function drawUndo(){ (state.drawings||[]).pop(); renderDraw(); }
 function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.drawings=[]; renderDraw(); } }
 (function initDraw(){
@@ -2689,7 +2824,7 @@ function drawClear(){ if(confirm('Apagar todos os desenhos do mapa?')){ state.dr
   const end=()=>{ drawing=null; };
   vp.addEventListener('pointerup',end); vp.addEventListener('pointercancel',end);
   const bar=document.createElement('div'); bar.id='draw-bar';
-  bar.innerHTML='<button data-tool="free" onclick="setDrawTool(\'free\')" title="desenho livre">✎ LIVRE</button><button data-tool="arrow" onclick="setDrawTool(\'arrow\')" title="seta">➜ SETA</button><input type="color" value="#f2d13b" title="cor" oninput="drawColor=this.value" style="width:22px;height:20px;padding:0;border:0;background:none"><button onclick="drawUndo()" title="desfazer">↶</button><button onclick="drawClear()" title="limpar tudo">🗑</button>';
+  bar.innerHTML='<button class="btn tiny ghost" data-tool="free" onclick="setDrawTool(\'free\')" title="desenho livre">✎ LIVRE</button><button class="btn tiny ghost" data-tool="arrow" onclick="setDrawTool(\'arrow\')" title="seta">➜ SETA</button><input type="color" value="#f2d13b" title="cor" oninput="drawColor=this.value" style="width:22px;height:20px;padding:0;border:0;background:none"><button class="btn tiny ghost" onclick="drawUndo()" title="desfazer">↶</button><button class="btn tiny ghost" onclick="drawClear()" title="limpar tudo">🗑</button>';
   (document.querySelector('.topbar')||document.body).appendChild(bar);
   setInterval(()=>{ const gm=role==='gm'; bar.style.display=gm?'flex':'none'; if(!gm&&drawTool) setDrawTool(drawTool); },1500);
   const _ra=renderAll; renderAll=function(){ const r=_ra.apply(this,arguments); try{renderDraw();}catch(e){} return r; };

@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <div id="app">
@@ -112,7 +112,7 @@
     <button class="btn small quick-next gm-only" id="btn-next-turn" onclick="nextTurn()" title="tecla N">PRÓXIMO TURNO ▶</button>
     <button class="btn small ghost quick-fog gm-only" id="btn-fog-quick" onclick="toggleFog()" title="clique pra trocar o nível da névoa">FOG: DESLIGADO</button>
     <details class="top-menu" id="mn-map"><summary>MAPA ▾</summary><div class="top-menu-pop">
-      <button class="btn small ghost" id="btn-freveal" onclick="fogSetTool('reveal')" title="clique no mapa pra revelar uma área">REVELAR</button> <button class="btn small ghost" id="btn-fhide" onclick="fogSetTool('hide')" title="clique numa área revelada pra escondê-la de novo">ESCONDER</button> <button class="btn small ghost" id="btn-rooms" onclick="toggleRoomEdit()">EDITAR SALAS</button> <button class="btn small ghost" onclick="openGmPane('map')">FUNDO, GRID E SALAS…</button> <button class="btn small ghost" onclick="openGmPane('images')">IMAGENS NO MAPA…</button> <button class="btn small ghost" onclick="openGmPane('events')">EVENTOS…</button>
+      <button class="btn small ghost" id="btn-freveal" onclick="fogSetTool('reveal')" title="clique no mapa pra revelar uma área">REVELAR</button> <button class="btn small ghost" id="btn-fhide" onclick="fogSetTool('hide')" title="clique numa área revelada pra escondê-la de novo">ESCONDER</button> <button class="btn small ghost" id="btn-rooms" onclick="toggleRoomEdit()">EDITAR MAPA</button> <button class="btn small ghost" onclick="openGmPane('map')">FUNDO, GRID E SALAS…</button> <button class="btn small ghost" onclick="openGmPane('images')">IMAGENS NO MAPA…</button> <button class="btn small ghost" onclick="openGmPane('events')">EVENTOS…</button>
       <div id="scene-tools" class="scene-tools gm-only"> <label for="scene-effect">CLIMA</label> <select id="scene-effect" onchange="setSceneEffect(this.value)"> <option value="none">SEM EFEITO</option><option value="rain">CHUVA</option><option value="glitch">INTERFERÊNCIA</option><option value="red">ALERTA VERMELHO</option><option value="dark">ESCURO</option> </select> </div>
     </div></details>
     <details class="top-menu" id="mn-combat"><summary>COMBATE ▾</summary><div class="top-menu-pop">
@@ -165,10 +165,12 @@
     <div class="main-grid">
       <div class="map-col">
         <div class="map-toolbar">
-          <button class="btn small ghost" id="btn-zoom-out" onclick="zoomMap(-0.15)">ZOOM −</button>
+          <button class="btn small ghost" id="btn-zoom-out" onclick="zoomMap(-1)">−</button>
+          <input type="range" class="zoom-range" id="zoom-range" min="-3.33" max="3.6" step="0.01" value="0" oninput="zoomSlider(this.value)" title="zoom">
           <span class="zoom-lvl" id="zoom-lvl">100%</span>
-          <button class="btn small ghost" id="btn-zoom-in" onclick="zoomMap(0.15)">ZOOM +</button>
-          <button class="btn small ghost" id="btn-reset-view" onclick="resetView()">RESETAR VISÃO</button>
+          <button class="btn small ghost" id="btn-zoom-in" onclick="zoomMap(1)">+</button>
+          <button class="btn small ghost" id="btn-reset-view" onclick="fitView()">AJUSTAR À TELA</button>
+          <button class="btn small ghost" id="btn-zoom-real" onclick="zoomAt(1)" title="tamanho real do mapa">100%</button>
           <button class="btn small ghost" id="btn-grid" onclick="toggleGrid()">GRID</button>
           <button class="btn small ghost" id="btn-fog" onclick="toggleFog()" title="clique pra trocar o nível da névoa">FOG: DESLIGADO</button>
           <span style="flex:1"></span>
@@ -212,7 +214,7 @@
       <div class="log-col" id="log-col">
         <h3>HISTÓRICO DA SESSÃO
           <span class="comms-actions">
-            <button class="btn small ghost" id="log-toggle-btn" onclick="toggleLog()">▼ RETRAIR</button>
+            <button class="btn tiny ghost" id="log-toggle-btn" onclick="toggleLog()">▼ RETRAIR</button>
           </span>
         </h3>
         <div id="log-list"></div>
@@ -220,7 +222,7 @@
       <div class="comms-col" id="comms-col">
         <h3>COMUNICAÇÃO
           <span class="comms-actions">
-            <button class="btn small ghost" id="comms-toggle-btn" onclick="toggleComms()">▼ RETRAIR</button>
+            <button class="btn tiny ghost" id="comms-toggle-btn" onclick="toggleComms()">▼ RETRAIR</button>
           </span>
         </h3>
         <div id="comms-list"></div>
@@ -243,7 +245,7 @@
       <div class="turn-col" id="turn-col">
         <button class="btn small ghost turn-col-close" onclick="document.getElementById('turn-col').classList.remove('open')">✕ FECHAR</button>
         <h3>TURN <span id="turn-num">00</span> — <span id="turn-current">—</span>
-          <button id="turn-toggle-btn" onclick="toggleTurnPanel()">▼ RETRAIR</button>
+          <button class="btn tiny ghost" id="turn-toggle-btn" onclick="toggleTurnPanel()">▼ RETRAIR</button>
         </h3>
         <div id="turn-list"></div>
         <div class="turn-btns" id="turn-btns">
@@ -257,7 +259,7 @@
 
     <div class="overlay" id="ov-sheet">
     <div class="overlay-card sheet-card">
-      <div class="ov-head"><h2 class="corp" id="sheet-name">PERSONAGEM</h2><div style="display:flex;gap:8px;align-items:center"><button class="btn small ghost" onclick="popOut('sheet')">🗗 ABRIR EM OUTRA TELA</button><button class="ov-close" onclick="closeOverlay('sheet')">✕ FECHAR</button></div></div>
+      <div class="ov-head"><h2 class="corp" id="sheet-name">PERSONAGEM</h2><div style="display:flex;gap:8px;align-items:center"><button class="btn small ghost" onclick="popOut('sheet')">🗗 ABRIR EM OUTRA TELA</button><button class="btn small ghost" onclick="closeOverlay('sheet')">✕ FECHAR</button></div></div>
       <div class="sheet-dossier">
         <div class="dossier-left">
           <div class="classified-stamp">CLASSIFIED</div>
@@ -280,7 +282,7 @@
 
     <div class="overlay" id="ov-notes">
     <div class="overlay-card dark">
-      <div class="ov-head"><h2 class="corp">ANOTAÇÕES DO PLAYER</h2><button class="ov-close" onclick="closeOverlay('notes')">✕ FECHAR</button></div>
+      <div class="ov-head"><h2 class="corp">ANOTAÇÕES DO PLAYER</h2><button class="btn small ghost" onclick="closeOverlay('notes')">✕ FECHAR</button></div>
       <div class="tabs">
         <button class="tab active" onclick="switchNoteTab('my',this)">MINHAS NOTAS</button>
         <button class="tab" onclick="switchNoteTab('shared',this)">NOTAS COMPARTILHADAS</button>
@@ -314,7 +316,7 @@
 
     <div class="overlay" id="ov-gm">
     <div class="overlay-card dark" style="width:min(880px,94vw)">
-      <div class="ov-head"><h2 class="corp">CONTROLE DO MESTRE</h2><div style="display:flex;gap:8px;align-items:center"><button class="btn small ghost" onclick="popOut('gm')">🗗 ABRIR EM OUTRA TELA</button><button class="ov-close" onclick="closeOverlay('gm')">✕ FECHAR</button></div></div>
+      <div class="ov-head"><h2 class="corp">CONTROLE DO MESTRE</h2><div style="display:flex;gap:8px;align-items:center"><button class="btn small ghost" onclick="popOut('gm')">🗗 ABRIR EM OUTRA TELA</button><button class="btn small ghost" onclick="closeOverlay('gm')">✕ FECHAR</button></div></div>
       <div class="ov-body" style="padding:0;display:grid;grid-template-columns:130px 1fr">
         <div class="gm-nav">
           <button class="active" data-p="chars" onclick="gmSwitch('chars',this)">PERSONAGENS</button>
@@ -334,7 +336,7 @@
 
     <div class="overlay" id="ov-board">
     <div class="overlay-card dark" style="width:min(1100px,96vw)">
-      <div class="ov-head"><h2 class="corp">QUADRO DE COMBATE</h2><div style="display:flex;gap:8px;align-items:center"><button class="btn small ghost" onclick="popOut('board')">🗗 ABRIR EM OUTRA TELA</button><button class="ov-close" onclick="closeOverlay('board')">✕ FECHAR</button></div></div>
+      <div class="ov-head"><h2 class="corp">QUADRO DE COMBATE</h2><div style="display:flex;gap:8px;align-items:center"><button class="btn small ghost" onclick="popOut('board')">🗗 ABRIR EM OUTRA TELA</button><button class="btn small ghost" onclick="closeOverlay('board')">✕ FECHAR</button></div></div>
       <div class="tabs" id="board-tabs"><button class="tab active" data-t="status" onclick="boardSwitch('status')">VIDA · SP · STATUS</button><button class="tab" data-t="skills" onclick="boardSwitch('skills')">HABILIDADES</button></div>
       <div class="ov-body" id="board-body"></div>
     </div>
@@ -342,7 +344,7 @@
 
     <div class="overlay" id="ov-mapimg">
     <div class="overlay-card dark" style="width:min(900px,94vw)">
-      <div class="ov-head"><h2 class="corp" id="mapimg-title"></h2><button class="ov-close" onclick="closeOverlay('mapimg')">✕ FECHAR</button></div>
+      <div class="ov-head"><h2 class="corp" id="mapimg-title"></h2><button class="btn small ghost" onclick="closeOverlay('mapimg')">✕ FECHAR</button></div>
       <div class="ov-body"><img id="mapimg-big" alt=""></div>
     </div>
   </div>
@@ -358,18 +360,18 @@
 
     <div class="overlay" id="ov-doc">
     <div class="overlay-card" style="width:380px">
-      <div class="ov-head"><h2 class="corp">INTERNAL DOCUMENT</h2><button class="ov-close" onclick="closeOverlay('doc')">✕</button></div>
+      <div class="ov-head"><h2 class="corp">INTERNAL DOCUMENT</h2><button class="btn small ghost" onclick="closeOverlay('doc')">✕</button></div>
       <div class="ov-body" id="doc-body"></div>
     </div>
   </div>
 
 </div>
 
-<script src="script.js?v=12"></script>
+<script src="script.js?v=13"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=12"></script>
-<script src="online.js?v=12"></script>
+<script src="firebase-config.js?v=13"></script>
+<script src="online.js?v=13"></script>
 </body>
 </html>
 
