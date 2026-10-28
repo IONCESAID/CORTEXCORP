@@ -303,7 +303,10 @@ function fogNearMe(x,y){
   return Math.hypot((x-me.x)*1.6,(y-me.y)*fogDims().fy)<=state.fogCfg.radius*1.6;
 }
 function fogCircles(){
-  if(fogBreuPlayer()) return [];
+  if(fogBreuPlayer()){
+    const me=state.characters[state.currentPlayer];
+    return (me && typeof me.x==='number')? [{x:me.x,y:me.y,r:state.fogCfg.radius}] : [];
+  }
   const c=state.fogCfg.holes.map(h=>({x:h.x,y:h.y,r:h.r}));
   if(fogVisionOn()) Object.values(state.characters).forEach(ch=>c.push({x:ch.x,y:ch.y,r:state.fogCfg.radius}));
   return c;
@@ -1700,7 +1703,7 @@ function gmRenderMap(){
     <div style="font-size:.6rem;color:var(--gray);margin-bottom:6px">O nível define o quão escura é a névoa. Áreas reveladas ficam limpas, e os players não veem inimigos/NPCs fora delas. Pra você a névoa aparece mais fraca.</div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${FOG_LEVELS.map((l,i)=>`<button class="btn small ghost ${state.fogLevel===i?'on-state':''}" onclick="setFogLevel(${i})">${l.n}</button>`).join('')}</div>
     <label style="font-size:.68rem"><input type="checkbox" onchange="fogSetVision(this.checked)" ${state.fogCfg.vision?'checked':''}> Visão dos players (revela ao redor de cada token)</label>
-    <div style="font-size:.58rem;color:var(--gray);margin-top:3px">No BREU o mapa fica todo preto pros players (salas e pincéis não abrem nada). Eles só veem os tokens (players, NPCs e inimigos) que estiverem dentro do raio ao redor do próprio token. Nos outros níveis vale a caixinha acima.</div>
+    <div style="font-size:.58rem;color:var(--gray);margin-top:3px">No BREU os players só veem o que estiver dentro do círculo ao redor do próprio token: mapa, salas e tokens (de players, NPCs e inimigos). Salas reveladas e pincéis não abrem nada nesse nível. Nos outros níveis vale a caixinha acima.</div>
     <div class="mus-ctrl">RAIO DA VISÃO <input type="range" min="4" max="40" value="${state.fogCfg.radius}" oninput="fogSetRadius(this.value)"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       <button class="btn small ghost ${state.fogCfg.tool==='reveal'?'on-state':''}" onclick="fogSetTool('reveal')">PINCEL: REVELAR</button>
