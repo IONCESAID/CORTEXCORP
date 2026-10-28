@@ -279,7 +279,7 @@ function onDrag(e){
   const obj= kind==='pc'? state.characters[id] : kind==='npc'? state.npcs[id] : state.enemies[id];
   if(!obj) return;
   obj.x=x; obj.y=y;
-  if(state.fogLevel>0 && state.fogCfg.vision) renderFog();
+  if(state.fogLevel>0 && fogVisionOn()) renderFog();
 }
 function endDrag(e){
   const t=dragTok; if(!t) return;
@@ -295,13 +295,22 @@ function toggleGrid(){
   document.getElementById('btn-grid').classList.toggle('on-state',state.grid);
 }
 const FOG_LEVELS=[{n:'DESLIGADO',o:0},{n:'LEVE',o:.35},{n:'MÉDIO',o:.6},{n:'DENSO',o:.85},{n:'BREU',o:1}];
+function fogBreu(){ return state.fogLevel===FOG_LEVELS.length-1; }
+function fogVisionOn(){ return fogBreu() || !!state.fogCfg.vision; }
+function fogBreuPlayer(){ return fogBreu() && role!=='gm'; }
+function fogNearMe(x,y){
+  const me=state.characters[state.currentPlayer]; if(!me || typeof me.x!=='number') return false;
+  return Math.hypot((x-me.x)*1.6,(y-me.y)*fogDims().fy)<=state.fogCfg.radius*1.6;
+}
 function fogCircles(){
+  if(fogBreuPlayer()) return [];
   const c=state.fogCfg.holes.map(h=>({x:h.x,y:h.y,r:h.r}));
-  if(state.fogCfg.vision) Object.values(state.characters).forEach(ch=>c.push({x:ch.x,y:ch.y,r:state.fogCfg.radius}));
+  if(fogVisionOn()) Object.values(state.characters).forEach(ch=>c.push({x:ch.x,y:ch.y,r:state.fogCfg.radius}));
   return c;
 }
 function fogDims(){ const m=mapSizeNow(), vh=160*m.h/m.w; return {vh,fy:vh/100}; }
 function isRevealed(x,y){
+  if(fogBreuPlayer()) return fogNearMe(x,y);
   const fy=fogDims().fy;
   if(fogCircles().some(h=>Math.hypot((x-h.x)*1.6,(y-h.y)*fy)<=h.r*1.6)) return true;
   return state.rooms.some(r=>r.revealed && r.kind!=='cover' && x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h);
@@ -315,7 +324,7 @@ function renderFog(){
   svg.classList.remove('hidden');
   const op= role==='gm'? Math.min(lvl.o,.5) : lvl.o;
   const holes=fogCircles().map(h=>`<circle cx="${h.x*1.6}" cy="${h.y*fy}" r="${h.r*1.6}"/>`).join('')
-    + state.rooms.filter(r=>r.revealed && r.kind!=='cover').map(r=>`<rect x="${r.x*1.6}" y="${r.y*fy}" width="${r.w*1.6}" height="${r.h*fy}"/>`).join('');
+    + (fogBreuPlayer()?[]:state.rooms.filter(r=>r.revealed && r.kind!=='cover')).map(r=>`<rect x="${r.x*1.6}" y="${r.y*fy}" width="${r.w*1.6}" height="${r.h*fy}"/>`).join('');
   svg.innerHTML=`<defs><filter id="fogblur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.4"/></filter>
     <mask id="fogmask"><rect width="160" height="${vh}" fill="white"/><g fill="black" filter="url(#fogblur)">${holes}</g></mask></defs>
     <rect width="160" height="${vh}" fill="#000" fill-opacity="${op}" mask="url(#fogmask)"/>`;
@@ -324,7 +333,7 @@ function renderFog(){
 function updateTokenVisibility(){
   document.querySelectorAll('#map-wrap .token').forEach(t=>{
     let hide=false;
-    if(role!=='gm' && state.fogLevel>0 && t.dataset.kind!=='pc'){ const o=findObj(t.dataset.id); hide=!!o && !isRevealed(o.x,o.y); }
+    if(role!=='gm' && state.fogLevel>0 && (t.dataset.kind!=='pc' || (fogBreu() && t.dataset.id!==state.currentPlayer))){ const o=findObj(t.dataset.id); hide=!!o && !isRevealed(o.x,o.y); }
     t.style.display=hide?'none':'';
   });
 }
@@ -1691,6 +1700,7 @@ function gmRenderMap(){
     <div style="font-size:.6rem;color:var(--gray);margin-bottom:6px">O nível define o quão escura é a névoa. Áreas reveladas ficam limpas, e os players não veem inimigos/NPCs fora delas. Pra você a névoa aparece mais fraca.</div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${FOG_LEVELS.map((l,i)=>`<button class="btn small ghost ${state.fogLevel===i?'on-state':''}" onclick="setFogLevel(${i})">${l.n}</button>`).join('')}</div>
     <label style="font-size:.68rem"><input type="checkbox" onchange="fogSetVision(this.checked)" ${state.fogCfg.vision?'checked':''}> Visão dos players (revela ao redor de cada token)</label>
+    <div style="font-size:.58rem;color:var(--gray);margin-top:3px">No BREU o mapa fica todo preto pros players (salas e pincéis não abrem nada). Eles só veem os tokens (players, NPCs e inimigos) que estiverem dentro do raio ao redor do próprio token. Nos outros níveis vale a caixinha acima.</div>
     <div class="mus-ctrl">RAIO DA VISÃO <input type="range" min="4" max="40" value="${state.fogCfg.radius}" oninput="fogSetRadius(this.value)"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       <button class="btn small ghost ${state.fogCfg.tool==='reveal'?'on-state':''}" onclick="fogSetTool('reveal')">PINCEL: REVELAR</button>
